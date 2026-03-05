@@ -172,6 +172,53 @@ export const toolsSchema = z.object({
   disabled: z.array(z.string()).default([]),
 })
 
+// ==================== Platform + Account Config ====================
+
+const guardConfigSchema = z.object({
+  type: z.string(),
+  options: z.record(z.string(), z.unknown()).default({}),
+})
+
+const ccxtPlatformSchema = z.object({
+  id: z.string(),
+  label: z.string().optional(),
+  type: z.literal('ccxt'),
+  exchange: z.string(),
+  sandbox: z.boolean().default(false),
+  demoTrading: z.boolean().default(false),
+  defaultMarketType: z.enum(['spot', 'swap']).default('swap'),
+  options: z.record(z.string(), z.unknown()).optional(),
+})
+
+const alpacaPlatformSchema = z.object({
+  id: z.string(),
+  label: z.string().optional(),
+  type: z.literal('alpaca'),
+  paper: z.boolean().default(true),
+})
+
+export const platformConfigSchema = z.discriminatedUnion('type', [
+  ccxtPlatformSchema,
+  alpacaPlatformSchema,
+])
+
+export const platformsFileSchema = z.array(platformConfigSchema)
+
+export const accountConfigSchema = z.object({
+  id: z.string(),
+  platformId: z.string(),
+  label: z.string().optional(),
+  apiKey: z.string().optional(),
+  apiSecret: z.string().optional(),
+  password: z.string().optional(),
+  guards: z.array(guardConfigSchema).default([]),
+})
+
+export const accountsFileSchema = z.array(accountConfigSchema)
+
+export type PlatformConfig = z.infer<typeof platformConfigSchema>
+export type AccountConfig = z.infer<typeof accountConfigSchema>
+
 // ==================== Unified Config Type ====================
 
 export type Config = {
@@ -275,6 +322,90 @@ export async function loadConfig(): Promise<Config> {
     newsCollector: await parseAndSeed(files[9], newsCollectorSchema, raws[9]),
     tools:         await parseAndSeed(files[10], toolsSchema, raws[10]),
   }
+}
+
+// ==================== Trading Config Loader ====================
+
+/**
+ * Load platform + account config.
+ * Prefers platforms.json + accounts.json. Falls back to legacy crypto.json + securities.json.
+ */
+export async function loadTradingConfig(): Promise<{
+  platforms: PlatformConfig[]
+  accounts: AccountConfig[]
+}> {
+  const [rawPlatforms, rawAccounts] = await Promise.all([
+    loadJsonFile('platforms.json'),
+    loadJsonFile('accounts.json'),
+  ])
+
+  if (rawPlatforms !== undefined && rawAccounts !== undefined) {
+    return {
+      platforms: platformsFileSchema.parse(rawPlatforms),
+      accounts: accountsFileSchema.parse(rawAccounts),
+    }
+  }
+
+  // Migration: derive from legacy crypto.json + securities.json
+  return migrateLegacyTradingConfig()
+}
+
+/** Derive platform+account config from old crypto.json + securities.json (read-only, no writes). */
+async function migrateLegacyTradingConfig(): Promise<{
+  platforms: PlatformConfig[]
+  accounts: AccountConfig[]
+}> {
+  const [rawCrypto, rawSecurities] = await Promise.all([
+    loadJsonFile('crypto.json'),
+    loadJsonFile('securities.json'),
+  ])
+
+  const crypto = cryptoSchema.parse(rawCrypto ?? {})
+  const securities = securitiesSchema.parse(rawSecurities ?? {})
+
+  const platforms: PlatformConfig[] = []
+  const accounts: AccountConfig[] = []
+
+  if (crypto.provider.type === 'ccxt') {
+    const p = crypto.provider
+    const platformId = `${p.exchange}-platform`
+    platforms.push({
+      id: platformId,
+      type: 'ccxt',
+      exchange: p.exchange,
+      sandbox: p.sandbox,
+      demoTrading: p.demoTrading,
+      defaultMarketType: p.defaultMarketType,
+      options: p.options,
+    })
+    accounts.push({
+      id: `${p.exchange}-main`,
+      platformId,
+      apiKey: p.apiKey,
+      apiSecret: p.apiSecret,
+      password: p.password,
+      guards: crypto.guards,
+    })
+  }
+
+  if (securities.provider.type === 'alpaca') {
+    const p = securities.provider
+    const platformId = 'alpaca-platform'
+    platforms.push({
+      id: platformId,
+      type: 'alpaca',
+      paper: p.paper,
+    })
+    accounts.push({
+      id: p.paper ? 'alpaca-paper' : 'alpaca-live',
+      platformId,
+      apiKey: p.apiKey,
+      apiSecret: p.secretKey,
+      guards: securities.guards,
+    })
+  }
+
+  return { platforms, accounts }
 }
 
 // ==================== Hot-read helpers ====================

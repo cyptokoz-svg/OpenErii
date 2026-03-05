@@ -79,8 +79,20 @@ export { createOperationDispatcher } from './operation-dispatcher.js'
 // Wallet State Bridge
 export { createWalletStateBridge } from './wallet-state-bridge.js'
 
-// Factory (wiring + config helpers)
-export { wireAccountTrading, createAlpacaFromConfig, createCcxtFromConfig } from './factory.js'
+// Platform
+export type { IPlatform, PlatformCredentials } from './platform.js'
+export { CcxtPlatform } from './providers/ccxt/CcxtPlatform.js'
+export type { CcxtPlatformConfig } from './providers/ccxt/CcxtPlatform.js'
+export { AlpacaPlatform } from './providers/alpaca/AlpacaPlatform.js'
+export type { AlpacaPlatformConfig } from './providers/alpaca/AlpacaPlatform.js'
+export {
+  createPlatformFromConfig,
+  createAccountFromConfig,
+  validatePlatformRefs,
+} from './platform-factory.js'
+
+// Factory (wiring)
+export { wireAccountTrading } from './factory.js'
 export type { AccountSetup } from './factory.js'
 
 // Unified Tool Factory

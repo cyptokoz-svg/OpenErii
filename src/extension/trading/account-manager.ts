@@ -12,12 +12,14 @@ import type { ITradingAccount, AccountCapabilities } from './interfaces.js'
 
 export interface AccountEntry {
   account: ITradingAccount
+  platformId?: string
 }
 
 export interface AccountSummary {
   id: string
   provider: string
   label: string
+  platformId?: string
   capabilities: AccountCapabilities
 }
 
@@ -51,11 +53,11 @@ export class AccountManager {
 
   // ---- Registration ----
 
-  addAccount(account: ITradingAccount): void {
+  addAccount(account: ITradingAccount, platformId?: string): void {
     if (this.entries.has(account.id)) {
       throw new Error(`Account "${account.id}" already registered`)
     }
-    this.entries.set(account.id, { account })
+    this.entries.set(account.id, { account, platformId })
   }
 
   removeAccount(id: string): void {
@@ -69,10 +71,11 @@ export class AccountManager {
   }
 
   listAccounts(): AccountSummary[] {
-    return Array.from(this.entries.values()).map(({ account }) => ({
+    return Array.from(this.entries.values()).map(({ account, platformId }) => ({
       id: account.id,
       provider: account.provider,
       label: account.label,
+      platformId,
       capabilities: account.getCapabilities(),
     }))
   }

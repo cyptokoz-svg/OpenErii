@@ -1,7 +1,7 @@
 import { readFile, writeFile, appendFile, mkdir } from 'fs/promises'
 import { resolve, dirname } from 'path'
 import { Engine } from './core/engine.js'
-import { loadConfig } from './core/config.js'
+import { loadConfig, loadTradingConfig } from './core/config.js'
 import type { Plugin, EngineContext, ReconnectResult } from './core/types.js'
 import { McpPlugin } from './plugins/mcp.js'
 import { TelegramPlugin } from './connectors/telegram/index.js'
@@ -12,11 +12,12 @@ import {
   AccountManager,
   CcxtAccount,
   wireAccountTrading,
-  createAlpacaFromConfig,
-  createCcxtFromConfig,
   createTradingTools,
+  createPlatformFromConfig,
+  createAccountFromConfig,
+  validatePlatformRefs,
 } from './extension/trading/index.js'
-import type { AccountSetup, GitExportState, ITradingGit } from './extension/trading/index.js'
+import type { AccountSetup, GitExportState, ITradingGit, IPlatform } from './extension/trading/index.js'
 import { Brain, createBrainTools } from './extension/brain/index.js'
 import type { BrainExportState } from './extension/brain/index.js'
 import { createBrowserTools } from './extension/browser/index.js'
@@ -44,9 +45,17 @@ import { NewsCollectorStore, NewsCollector, wrapNewsToolsForPiggyback, createNew
 
 // ==================== Persistence paths ====================
 
-const CRYPTO_GIT_FILE = resolve('data/crypto-trading/commit.json')
-const SEC_GIT_FILE = resolve('data/securities-trading/commit.json')
 const BRAIN_FILE = resolve('data/brain/commit.json')
+
+/** Per-account git state path. Falls back to legacy paths for backward compat. */
+function gitFilePath(accountId: string): string {
+  return resolve(`data/trading/${accountId}/commit.json`)
+}
+const LEGACY_GIT_PATHS: Record<string, string> = {
+  'bybit-main': resolve('data/crypto-trading/commit.json'),
+  'alpaca-paper': resolve('data/securities-trading/commit.json'),
+  'alpaca-live': resolve('data/securities-trading/commit.json'),
+}
 const FRONTAL_LOBE_FILE = resolve('data/brain/frontal-lobe.md')
 const EMOTION_LOG_FILE = resolve('data/brain/emotion-log.md')
 const PERSONA_FILE = resolve('data/brain/persona.md')
@@ -73,11 +82,19 @@ function createGitPersister(filePath: string) {
   }
 }
 
-/** Read saved git state from disk. */
-async function loadGitState(filePath: string): Promise<GitExportState | undefined> {
-  return readFile(filePath, 'utf-8')
-    .then((r) => JSON.parse(r) as GitExportState)
-    .catch(() => undefined)
+/** Read saved git state from disk, trying primary path then legacy fallback. */
+async function loadGitState(accountId: string): Promise<GitExportState | undefined> {
+  const primary = gitFilePath(accountId)
+  try {
+    return JSON.parse(await readFile(primary, 'utf-8')) as GitExportState
+  } catch { /* try legacy */ }
+  const legacy = LEGACY_GIT_PATHS[accountId]
+  if (legacy) {
+    try {
+      return JSON.parse(await readFile(legacy, 'utf-8')) as GitExportState
+    } catch { /* no saved state */ }
+  }
+  return undefined
 }
 
 async function main() {
@@ -86,49 +103,64 @@ async function main() {
   // ==================== Trading Account Manager ====================
 
   const accountManager = new AccountManager()
-  // Mutable map: accountId → { setup, gitFilePath }
-  // Needed for reconnect (re-wiring) and git lookups.
-  const accountSetups = new Map<string, { setup: AccountSetup; gitFilePath: string }>()
+  // Mutable map: accountId → setup. Needed for reconnect (re-wiring) and git lookups.
+  const accountSetups = new Map<string, AccountSetup>()
 
-  // ==================== Alpaca (securities) — sync init ====================
+  // ==================== Platform-driven Account Init ====================
 
-  const alpacaAccount = createAlpacaFromConfig(config.securities)
-  let alpacaReady = false
+  const tradingConfig = await loadTradingConfig()
+  const platformRegistry = new Map<string, IPlatform>()
+  for (const pc of tradingConfig.platforms) {
+    platformRegistry.set(pc.id, createPlatformFromConfig(pc))
+  }
+  validatePlatformRefs([...platformRegistry.values()], tradingConfig.accounts)
 
-  if (alpacaAccount) {
+  /** Initialize and register a single account. Returns true if successful. */
+  async function initAccount(
+    accountCfg: { id: string; platformId: string; guards: Array<{ type: string; options: Record<string, unknown> }> },
+    platform: IPlatform,
+  ): Promise<boolean> {
+    const account = createAccountFromConfig(platform, accountCfg)
     try {
-      await alpacaAccount.init()
-      const savedState = await loadGitState(SEC_GIT_FILE)
-      const setup = wireAccountTrading(alpacaAccount, {
-        guards: config.securities.guards,
-        savedState,
-        onCommit: createGitPersister(SEC_GIT_FILE),
-      })
-      accountManager.addAccount(alpacaAccount)
-      accountSetups.set(alpacaAccount.id, { setup, gitFilePath: SEC_GIT_FILE })
-      alpacaReady = true
-      console.log(`trading: ${alpacaAccount.label} initialized`)
+      await account.init()
     } catch (err) {
-      console.warn('trading: alpaca init failed (non-fatal):', err)
+      console.warn(`trading: ${accountCfg.id} init failed (non-fatal):`, err)
+      return false
+    }
+    const savedState = await loadGitState(accountCfg.id)
+    const filePath = gitFilePath(accountCfg.id)
+    const setup = wireAccountTrading(account, {
+      guards: accountCfg.guards,
+      savedState,
+      onCommit: createGitPersister(filePath),
+    })
+    accountManager.addAccount(account, accountCfg.platformId)
+    accountSetups.set(account.id, setup)
+    console.log(`trading: ${account.label} initialized`)
+    return true
+  }
+
+  // Alpaca accounts — sync init (fast, blocks startup)
+  // CCXT accounts — async background init (loadMarkets is slow)
+  const ccxtAccountConfigs: Array<{ cfg: typeof tradingConfig.accounts[number]; platform: IPlatform }> = []
+
+  for (const accCfg of tradingConfig.accounts) {
+    const platform = platformRegistry.get(accCfg.platformId)!
+    if (platform.providerType === 'alpaca') {
+      await initAccount(accCfg, platform)
+    } else {
+      ccxtAccountConfigs.push({ cfg: accCfg, platform })
     }
   }
 
-  // ==================== CCXT (crypto) — async background init ====================
-
-  const ccxtAccount = createCcxtFromConfig(config.crypto)
-
-  // CCXT init is slow (loadMarkets with retries). Start in background, register tools when ready.
-  const ccxtInitPromise = ccxtAccount
+  // CCXT init in background — register tools when ready
+  const ccxtInitPromise = ccxtAccountConfigs.length > 0
     ? (async () => {
-        try {
-          await ccxtAccount.init()
-          return ccxtAccount
-        } catch (err) {
-          console.warn('trading: ccxt init failed (non-fatal):', err)
-          return null
+        for (const { cfg, platform } of ccxtAccountConfigs) {
+          await initAccount(cfg, platform)
         }
       })()
-    : Promise.resolve(null)
+    : Promise.resolve()
 
   // ==================== Brain ====================
 
@@ -209,8 +241,8 @@ async function main() {
   toolCenter.register(
     createTradingTools({
       accountManager,
-      getGit: (id) => accountSetups.get(id)?.setup.git,
-      getGitState: (id) => accountSetups.get(id)?.setup.getGitState(),
+      getGit: (id) => accountSetups.get(id)?.git,
+      getGitState: (id) => accountSetups.get(id)?.getGitState(),
     }),
     'trading',
   )
@@ -296,66 +328,54 @@ async function main() {
     }
     reconnectingAccounts.add(accountId)
     try {
-      const freshConfig = await loadConfig()
-      const entry = accountSetups.get(accountId)
-
-      // Determine provider type from current account or ID pattern
-      const currentAccount = accountManager.getAccount(accountId)
-      const provider = currentAccount?.provider ?? (accountId.startsWith('alpaca') ? 'alpaca' : 'ccxt')
+      // Re-read trading config to pick up credential/guard changes
+      const freshTrading = await loadTradingConfig()
 
       // Close old account
+      const currentAccount = accountManager.getAccount(accountId)
       if (currentAccount) {
         await currentAccount.close()
         accountManager.removeAccount(accountId)
         accountSetups.delete(accountId)
       }
 
-      if (provider === 'alpaca') {
-        const newAccount = createAlpacaFromConfig(freshConfig.securities)
-        if (!newAccount) {
-          return { success: true, message: 'Securities trading disabled (provider: none)' }
-        }
-        await newAccount.init()
-        const savedState = await loadGitState(SEC_GIT_FILE)
-        const setup = wireAccountTrading(newAccount, {
-          guards: freshConfig.securities.guards,
-          savedState,
-          onCommit: createGitPersister(SEC_GIT_FILE),
-        })
-        accountManager.addAccount(newAccount)
-        accountSetups.set(newAccount.id, { setup, gitFilePath: SEC_GIT_FILE })
-        console.log(`reconnect: ${newAccount.label} online`)
-        return { success: true, message: `${newAccount.label} reconnected` }
-      } else {
-        // CCXT
-        const newAccount = createCcxtFromConfig(freshConfig.crypto)
-        if (!newAccount) {
-          return { success: true, message: 'Crypto trading disabled (provider: none)' }
-        }
-        await newAccount.init()
-        const savedState = await loadGitState(CRYPTO_GIT_FILE)
-        const setup = wireAccountTrading(newAccount, {
-          guards: freshConfig.crypto.guards,
-          savedState,
-          onCommit: createGitPersister(CRYPTO_GIT_FILE),
-        })
-        accountManager.addAccount(newAccount)
-        accountSetups.set(newAccount.id, { setup, gitFilePath: CRYPTO_GIT_FILE })
+      // Find this account in fresh config
+      const accCfg = freshTrading.accounts.find((a) => a.id === accountId)
+      if (!accCfg) {
+        return { success: true, message: `Account "${accountId}" not found in config (removed or disabled)` }
+      }
 
-        // Re-register provider tools (dynamic resolution means existing tools still work,
-        // but this handles the case where CCXT initially failed and tools were never registered)
+      // Build platform registry from fresh config
+      const freshPlatforms = new Map<string, IPlatform>()
+      for (const pc of freshTrading.platforms) {
+        freshPlatforms.set(pc.id, createPlatformFromConfig(pc))
+      }
+
+      const platform = freshPlatforms.get(accCfg.platformId)
+      if (!platform) {
+        return { success: false, error: `Platform "${accCfg.platformId}" not found for account "${accountId}"` }
+      }
+
+      const ok = await initAccount(accCfg, platform)
+      if (!ok) {
+        return { success: false, error: `Account "${accountId}" init failed` }
+      }
+
+      // Re-register CCXT-specific tools if this is a CCXT account
+      if (platform.providerType !== 'alpaca') {
         toolCenter.register(
           CcxtAccount.createProviderTools({
             accountManager,
-            getGit: (id) => accountSetups.get(id)?.setup.git,
-            getGitState: (id) => accountSetups.get(id)?.setup.getGitState(),
+            getGit: (id) => accountSetups.get(id)?.git,
+            getGitState: (id) => accountSetups.get(id)?.getGitState(),
           }),
           'trading-ccxt',
         )
-
-        console.log(`reconnect: ${newAccount.label} online`)
-        return { success: true, message: `${newAccount.label} reconnected` }
       }
+
+      const label = accountManager.getAccount(accountId)?.label ?? accountId
+      console.log(`reconnect: ${label} online`)
+      return { success: true, message: `${label} reconnected` }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       console.error(`reconnect: ${accountId} failed:`, msg)
@@ -453,7 +473,7 @@ async function main() {
   const ctx: EngineContext = {
     config, connectorCenter, engine, eventLog, heartbeat, cronEngine, toolCenter,
     accountManager,
-    getAccountGit: (id: string): ITradingGit | undefined => accountSetups.get(id)?.setup.git,
+    getAccountGit: (id: string): ITradingGit | undefined => accountSetups.get(id)?.git,
     reconnectAccount,
     reconnectConnectors,
   }
@@ -466,33 +486,24 @@ async function main() {
   console.log('engine: started')
 
   // ==================== CCXT Background Injection ====================
-  // When the CCXT account is ready, wire up TradingGit + register tools so the next
-  // agent call picks them up automatically (VercelAIProvider re-checks tool count).
+  // CCXT accounts init in background (loadMarkets is slow). When done, register
+  // CCXT-specific tools so the next agent call picks them up automatically.
+  ccxtInitPromise.then(() => {
+    // Check if any CCXT accounts were successfully registered
+    const hasCcxt = Array.from(accountSetups.values()).some(
+      (s) => s.account instanceof CcxtAccount,
+    )
+    if (!hasCcxt) return
 
-  // When CCXT finishes async init, just register it with AccountManager.
-  // Trading tools already exist and will discover accounts dynamically via source routing.
-  ccxtInitPromise.then(async (readyAccount) => {
-    if (!readyAccount) return
-    const savedState = await loadGitState(CRYPTO_GIT_FILE)
-    const setup = wireAccountTrading(readyAccount, {
-      guards: config.crypto.guards,
-      savedState,
-      onCommit: createGitPersister(CRYPTO_GIT_FILE),
-    })
-    accountManager.addAccount(readyAccount)
-    accountSetups.set(readyAccount.id, { setup, gitFilePath: CRYPTO_GIT_FILE })
-
-    // Register CCXT-specific tools (getFundingRate, getOrderBook)
     toolCenter.register(
       CcxtAccount.createProviderTools({
         accountManager,
-        getGit: (id) => accountSetups.get(id)?.setup.git,
-        getGitState: (id) => accountSetups.get(id)?.setup.getGitState(),
+        getGit: (id) => accountSetups.get(id)?.git,
+        getGitState: (id) => accountSetups.get(id)?.getGitState(),
       }),
       'trading-ccxt',
     )
-
-    console.log(`ccxt: ${readyAccount.label} online + provider tools registered`)
+    console.log('ccxt: provider tools registered')
   })
 
   // ==================== Shutdown ====================

@@ -56,6 +56,15 @@ describe('AccountManager', () => {
       expect(list[0].provider).toBe('alpaca')
       expect(list[1].id).toBe('a2')
     })
+
+    it('includes platformId when provided', () => {
+      manager.addAccount(new MockTradingAccount({ id: 'a1', provider: 'alpaca' }), 'alpaca-paper')
+      manager.addAccount(new MockTradingAccount({ id: 'a2', provider: 'ccxt' }))
+
+      const list = manager.listAccounts()
+      expect(list[0].platformId).toBe('alpaca-paper')
+      expect(list[1].platformId).toBeUndefined()
+    })
   })
 
   // ==================== getAggregatedEquity ====================

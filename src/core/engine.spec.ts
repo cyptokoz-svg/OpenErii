@@ -181,7 +181,7 @@ describe('Engine', () => {
 
       await engine.askWithSession('hello', session)
 
-      expect(session.appendAssistant).toHaveBeenCalledWith('assistant reply', 'engine')
+      expect(session.appendAssistant).toHaveBeenCalledWith('assistant reply', 'vercel-ai')
     })
 
     it('returns the generated text and empty media', async () => {

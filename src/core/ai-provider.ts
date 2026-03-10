@@ -13,11 +13,23 @@ import { readAIProviderConfig } from './config.js'
 // ==================== Types ====================
 
 export interface AskOptions {
-  /** Preamble text inside <chat_history> block (Claude Code only). */
+  /**
+   * Preamble text describing the conversation context.
+   * Claude Code: injected inside the `<chat_history>` text block.
+   * Vercel AI SDK: not used (native ModelMessage[] carries the history directly).
+   */
   historyPreamble?: string
-  /** System prompt override (Claude Code only). */
+  /**
+   * System prompt override for this call.
+   * Claude Code: passed as `--system-prompt` to the CLI.
+   * Vercel AI SDK: replaces the agent's `instructions` for this call (triggers agent re-creation if changed).
+   */
   systemPrompt?: string
-  /** Max text history entries in <chat_history>. Default: 50 (Claude Code only). */
+  /**
+   * Max text history entries to include in context.
+   * Claude Code: limits entries in the `<chat_history>` block. Default: 50.
+   * Vercel AI SDK: not used (compaction via `compactIfNeeded` controls context size).
+   */
   maxHistoryEntries?: number
 }
 

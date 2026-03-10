@@ -36,7 +36,7 @@ export interface SessionEntry {
   sessionId: string
   timestamp: string
   /** Which provider generated this entry. */
-  provider?: 'engine' | 'claude-code' | 'human' | 'compaction'
+  provider?: 'vercel-ai' | 'claude-code' | 'human' | 'compaction'
   cwd?: string
   /** Arbitrary metadata attached to the entry (e.g. { kind: 'notification', source: 'heartbeat' }). */
   metadata?: Record<string, unknown>
@@ -87,7 +87,7 @@ export class SessionStore {
   /** Append an assistant message to the session. */
   async appendAssistant(
     content: string | ContentBlock[],
-    provider: SessionEntry['provider'] = 'engine',
+    provider: SessionEntry['provider'] = 'vercel-ai',
     metadata?: Record<string, unknown>,
   ): Promise<SessionEntry> {
     return this.append({

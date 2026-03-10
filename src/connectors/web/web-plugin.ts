@@ -116,7 +116,7 @@ export class WebPlugin implements Plugin {
           { type: 'text', text: payload.text },
           ...media.map((m) => ({ type: 'image' as const, url: m.url })),
         ]
-        await session.appendAssistant(blocks, 'engine', {
+        await session.appendAssistant(blocks, 'vercel-ai', {
           kind: payload.kind,
           source: payload.source,
         })

@@ -21,6 +21,7 @@ import { createAgent } from './agent.js'
 export class VercelAIProvider implements AIProvider {
   private cachedKey: string | null = null
   private cachedToolCount: number = 0
+  private cachedSystemPrompt: string | null = null
   private cachedAgent: Agent | null = null
 
   constructor(
@@ -30,22 +31,24 @@ export class VercelAIProvider implements AIProvider {
     private compaction: CompactionConfig,
   ) {}
 
-  /** Lazily create or return the cached agent, re-creating when config or tools change. */
-  private async resolveAgent(): Promise<Agent> {
+  /** Lazily create or return the cached agent, re-creating when config, tools, or system prompt change. */
+  private async resolveAgent(systemPrompt?: string): Promise<Agent> {
     const { model, key } = await createModelFromConfig()
     const tools = await this.getTools()
     const toolCount = Object.keys(tools).length
-    if (key !== this.cachedKey || toolCount !== this.cachedToolCount) {
-      this.cachedAgent = createAgent(model, tools, this.instructions, this.maxSteps)
+    const effectivePrompt = systemPrompt ?? null
+    if (key !== this.cachedKey || toolCount !== this.cachedToolCount || effectivePrompt !== this.cachedSystemPrompt) {
+      this.cachedAgent = createAgent(model, tools, systemPrompt ?? this.instructions, this.maxSteps)
       this.cachedKey = key
       this.cachedToolCount = toolCount
+      this.cachedSystemPrompt = effectivePrompt
       console.log(`vercel-ai: model loaded → ${key} (${toolCount} tools)`)
     }
     return this.cachedAgent!
   }
 
   async ask(prompt: string): Promise<ProviderResult> {
-    const agent = await this.resolveAgent()
+    const agent = await this.resolveAgent(undefined)
     const media: MediaAttachment[] = []
     const result = await agent.generate({
       prompt,
@@ -58,8 +61,9 @@ export class VercelAIProvider implements AIProvider {
     return { text: result.text ?? '', media }
   }
 
-  async askWithSession(prompt: string, session: SessionStore, _opts?: AskOptions): Promise<ProviderResult> {
-    const agent = await this.resolveAgent()
+  async askWithSession(prompt: string, session: SessionStore, opts?: AskOptions): Promise<ProviderResult> {
+    // historyPreamble and maxHistoryEntries are not used: Vercel passes native ModelMessage[] with no text wrapping needed.
+    const agent = await this.resolveAgent(opts?.systemPrompt)
 
     await session.appendUser(prompt, 'human')
 
@@ -86,7 +90,7 @@ export class VercelAIProvider implements AIProvider {
     })
 
     const text = result.text ?? ''
-    await session.appendAssistant(text, 'engine')
+    await session.appendAssistant(text, 'vercel-ai')
     return { text, media }
   }
 }

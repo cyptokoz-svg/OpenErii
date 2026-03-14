@@ -18,6 +18,11 @@ import { createTradingConfigRoutes } from './routes/trading-config.js'
 import { createDevRoutes } from './routes/dev.js'
 import { createToolsRoutes } from './routes/tools.js'
 import { createAtlasRoutes } from './routes/atlas.js'
+import { loadAtlasConfig } from '../../extension/atlas/config.js'
+import { AtlasPipeline } from '../../extension/atlas/pipeline.js'
+import { ensureAtlasChannels, deptChannelId } from '../../extension/atlas/channels.js'
+import type { AtlasConfig, AgentConfig, Envelope, PipelineCallbacks } from '../../extension/atlas/types.js'
+import type { LLMCallFn } from '../../extension/atlas/runner.js'
 
 export interface WebConfig {
   port: number
@@ -29,6 +34,10 @@ export class WebPlugin implements Plugin {
   /** SSE clients grouped by channel ID. Default channel: 'default'. */
   private sseByChannel = new Map<string, Map<string, SSEClient>>()
   private unregisterConnector?: () => void
+
+  // Atlas state — initialized lazily after start()
+  private atlasPipeline: AtlasPipeline | null = null
+  private atlasConfig: AtlasConfig | null = null
 
   constructor(private config: WebConfig) {}
 
@@ -54,6 +63,9 @@ export class WebPlugin implements Plugin {
     for (const ch of subChannels) {
       this.sseByChannel.set(ch.id, new Map())
     }
+
+    // ==================== Atlas Init ====================
+    await this.initAtlas(ctx)
 
     const app = new Hono()
 
@@ -82,7 +94,10 @@ export class WebPlugin implements Plugin {
     app.route('/api/trading', createTradingRoutes(ctx))
     app.route('/api/dev', createDevRoutes(ctx.connectorCenter))
     app.route('/api/tools', createToolsRoutes(ctx.toolCenter))
-    app.route('/api/atlas', createAtlasRoutes({ getPipeline: () => null, getConfig: () => null }))
+    app.route('/api/atlas', createAtlasRoutes({
+      getPipeline: () => this.atlasPipeline,
+      getConfig: () => this.atlasConfig,
+    }))
 
     // ==================== Serve UI (Vite build output) ====================
     const uiRoot = resolve('dist/ui')
@@ -99,6 +114,117 @@ export class WebPlugin implements Plugin {
     this.server = serve({ fetch: app.fetch, port: this.config.port }, (info: { port: number }) => {
       console.log(`web plugin listening on http://localhost:${info.port}`)
     })
+  }
+
+  /** Initialize Atlas pipeline if config exists and is enabled. */
+  private async initAtlas(ctx: EngineContext): Promise<void> {
+    try {
+      this.atlasConfig = await loadAtlasConfig()
+    } catch {
+      return // No atlas config — skip
+    }
+    if (!this.atlasConfig.enabled) {
+      console.log('atlas: disabled in config')
+      return
+    }
+
+    // Create research channels and init SSE maps for them
+    const created = await ensureAtlasChannels(this.atlasConfig)
+    for (const chId of created) {
+      if (!this.sseByChannel.has(chId)) {
+        this.sseByChannel.set(chId, new Map())
+      }
+    }
+    // Also ensure existing atlas channels have SSE maps
+    for (const dept of this.atlasConfig.departments) {
+      const chId = deptChannelId(dept.name)
+      if (!this.sseByChannel.has(chId)) {
+        this.sseByChannel.set(chId, new Map())
+      }
+    }
+
+    // SSE push helper
+    const pushToChannel = (channelId: string, data: string) => {
+      const clients = this.sseByChannel.get(channelId)
+      if (!clients) return
+      for (const client of clients.values()) {
+        try { client.send(data) } catch { /* disconnected */ }
+      }
+    }
+
+    // Pipeline callbacks — push agent analysis to research channels
+    const callbacks: PipelineCallbacks = {
+      onAgentComplete: (agent: AgentConfig, envelope: Envelope) => {
+        for (const dept of this.atlasConfig!.departments) {
+          if (!dept.enabled) continue
+          pushToChannel(deptChannelId(dept.name), JSON.stringify({
+            type: 'atlas-agent',
+            agent: agent.display_name ?? agent.name,
+            layer: agent.layer,
+            direction: envelope.signal.direction,
+            conviction: envelope.signal.conviction,
+            reasoning: envelope.reasoning,
+            positions: envelope.signal.positions,
+            knowledge_updates: envelope.knowledge_updates,
+            timestamp: envelope.timestamp,
+          }))
+        }
+      },
+      onLayerComplete: (synthesis) => {
+        for (const dept of this.atlasConfig!.departments) {
+          if (!dept.enabled) continue
+          pushToChannel(deptChannelId(dept.name), JSON.stringify({
+            type: 'atlas-layer',
+            layer: synthesis.layer,
+            direction: synthesis.direction,
+            conviction: synthesis.conviction,
+            agreement: synthesis.agreement_ratio,
+            summary: synthesis.summary,
+            timestamp: new Date().toISOString(),
+          }))
+        }
+      },
+      onReportComplete: (report) => {
+        for (const dept of this.atlasConfig!.departments) {
+          if (!dept.enabled) continue
+          if (dept.name === report.department || dept.id === report.department) {
+            pushToChannel(deptChannelId(dept.name), JSON.stringify({
+              type: 'atlas-report',
+              department: report.department,
+              direction: report.direction,
+              conviction: report.conviction,
+              positions: report.positions,
+              summary: report.summary,
+              timestamp: report.timestamp,
+            }))
+          }
+        }
+      },
+    }
+
+    // LLM call — use agentCenter.ask()
+    const llmCall: LLMCallFn = async (prompt: string, _model: string): Promise<string> => {
+      const result = await ctx.agentCenter.ask(prompt)
+      return result.text
+    }
+
+    // Data fetch — simplified: return empty context (no opentypebb wiring for now)
+    const dataFetch = async (): Promise<string> => {
+      return '[No live data connected — configure opentypebb data sources]'
+    }
+
+    // Should-run — always run for now
+    const shouldRunAgent = async (): Promise<boolean> => true
+
+    this.atlasPipeline = new AtlasPipeline({
+      atlasConfig: this.atlasConfig,
+      llmCall,
+      dataFetch,
+      shouldRunAgent,
+      callbacks,
+    })
+
+    console.log(`atlas: initialized with ${this.atlasConfig.departments.filter(d => d.enabled).length} departments`)
   }
 
   async stop() {

@@ -2,6 +2,7 @@ import { type ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { type Page, ROUTES } from '../App'
 import { LanguageSwitcher } from './LanguageSwitcher'
+import { useLocale, type TranslationKey } from '../i18n'
 
 interface SidebarProps {
   sseConnected: boolean
@@ -25,6 +26,7 @@ const Chevron = ({ expanded }: { expanded: boolean }) => (
 interface NavLeaf {
   page: Page
   label: string
+  i18nKey?: TranslationKey
   icon: (active: boolean) => ReactNode
 }
 
@@ -32,7 +34,7 @@ interface NavGroup {
   prefix: string
   label: string
   icon: (active: boolean) => ReactNode
-  children: { page: Page; label: string }[]
+  children: { page: Page; label: string; i18nKey?: TranslationKey }[]
 }
 
 type NavItem = NavLeaf | NavGroup
@@ -40,7 +42,7 @@ const isGroup = (item: NavItem): item is NavGroup => 'children' in item
 
 const NAV_ITEMS: NavItem[] = [
   {
-    page: 'chat',
+    page: 'chat', i18nKey: 'nav.chat' as const,
     label: 'Chat',
     icon: (active) => (
       <svg width="18" height="18" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -49,7 +51,7 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
-    page: 'portfolio',
+    page: 'portfolio', i18nKey: 'nav.portfolio' as const,
     label: 'Portfolio',
     icon: (active) => (
       <svg width="18" height="18" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -61,7 +63,7 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
-    page: 'events',
+    page: 'events', i18nKey: 'nav.events' as const,
     label: 'Events',
     icon: (active) => (
       <svg width="18" height="18" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -70,7 +72,7 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
-    page: 'heartbeat',
+    page: 'heartbeat', i18nKey: 'nav.heartbeat' as const,
     label: 'Heartbeat',
     icon: (active) => (
       <svg width="18" height="18" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -79,7 +81,7 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
-    page: 'data-sources',
+    page: 'data-sources', i18nKey: 'nav.data_sources' as const,
     label: 'Data Sources',
     icon: (active) => (
       <svg width="18" height="18" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -90,7 +92,7 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
-    page: 'connectors',
+    page: 'connectors', i18nKey: 'nav.connectors' as const,
     label: 'Connectors',
     icon: (active) => (
       <svg width="18" height="18" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -101,7 +103,7 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
-    page: 'tools',
+    page: 'tools', i18nKey: 'nav.tools' as const,
     label: 'Tools',
     icon: (active) => (
       <svg width="18" height="18" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -110,7 +112,7 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
-    page: 'trading' as const,
+    page: 'trading' as const, i18nKey: 'nav.trading' as const,
     label: 'Trading',
     icon: (active: boolean) => (
       <svg width="18" height="18" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -123,7 +125,7 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
-    page: 'atlas' as const,
+    page: 'atlas' as const, i18nKey: 'nav.atlas' as const,
     label: 'Atlas Research',
     icon: (active: boolean) => (
       <svg width="18" height="18" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -134,7 +136,7 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
-    page: 'ai-provider',
+    page: 'ai-provider', i18nKey: 'nav.ai_provider' as const,
     label: 'AI Provider',
     icon: (active) => (
       <svg width="18" height="18" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -144,7 +146,7 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
-    page: 'settings',
+    page: 'settings', i18nKey: 'nav.settings' as const,
     label: 'Settings',
     icon: (active) => (
       <svg width="18" height="18" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -154,7 +156,7 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
-    page: 'dev' as const,
+    page: 'dev' as const, i18nKey: 'nav.dev' as const,
     label: 'Dev',
     icon: (active: boolean) => (
       <svg width="18" height="18" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -182,6 +184,11 @@ function pathToPage(pathname: string): Page | null {
 export function Sidebar({ sseConnected, open, onClose }: SidebarProps) {
   const location = useLocation()
   const currentPage = pathToPage(location.pathname)
+  const { t } = useLocale()
+
+  /** Resolve label: use i18n key if available, otherwise fall back to static label */
+  const resolveLabel = (label: string, i18nKey?: TranslationKey) =>
+    i18nKey ? t(i18nKey) : label
 
   return (
     <>
@@ -231,7 +238,7 @@ export function Sidebar({ sseConnected, open, onClose }: SidebarProps) {
                   >
                     {expanded && <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-accent" />}
                     <span className="flex items-center justify-center w-5 h-5">{item.icon(expanded)}</span>
-                    <span className="flex-1">{item.label}</span>
+                    <span className="flex-1">{resolveLabel(item.label, 'i18nKey' in item ? (item as unknown as NavLeaf).i18nKey : undefined)}</span>
                     <Chevron expanded={expanded} />
                   </Link>
 
@@ -255,7 +262,7 @@ export function Sidebar({ sseConnected, open, onClose }: SidebarProps) {
                           }`}
                         >
                           {isActive && <span className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r-full bg-accent" />}
-                          {child.label}
+                          {resolveLabel(child.label, child.i18nKey)}
                         </Link>
                       )
                     })}
@@ -279,7 +286,7 @@ export function Sidebar({ sseConnected, open, onClose }: SidebarProps) {
               >
                 {isActive && <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-accent" />}
                 <span className="flex items-center justify-center w-5 h-5">{item.icon(isActive)}</span>
-                {item.label}
+                {resolveLabel(item.label, (item as NavLeaf).i18nKey)}
               </Link>
             )
           })}
@@ -298,7 +305,7 @@ export function Sidebar({ sseConnected, open, onClose }: SidebarProps) {
                 </>
               )}
             </span>
-            <span>{sseConnected ? 'Connected' : 'Reconnecting...'}</span>
+            <span>{sseConnected ? t('common.connected') : t('common.disconnected')}</span>
           </div>
           <div className="mt-2 flex justify-end">
             <LanguageSwitcher />

@@ -37,7 +37,7 @@ export async function ensureAtlasChannels(config: AtlasConfig): Promise<string[]
     if (!dept.enabled) continue
 
     // Department research channel
-    const deptId = deptChannelId(dept.name)
+    const deptId = deptChannelId(dept.id)
     if (!existingIds.has(deptId)) {
       const ch: WebChannel = {
         id: deptId,
@@ -62,7 +62,7 @@ export async function ensureAtlasChannels(config: AtlasConfig): Promise<string[]
     for (const agent of agents) {
       if (!agent.chat_enabled) continue
 
-      const agentId = agentChannelId(dept.name, agent.name)
+      const agentId = agentChannelId(dept.id, agent.name)
       if (!existingIds.has(agentId)) {
         const ch: WebChannel = {
           id: agentId,

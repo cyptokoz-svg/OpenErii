@@ -137,7 +137,7 @@ export class WebPlugin implements Plugin {
     }
     // Also ensure existing atlas channels have SSE maps
     for (const dept of this.atlasConfig.departments) {
-      const chId = deptChannelId(dept.name)
+      const chId = deptChannelId(dept.id)
       if (!this.sseByChannel.has(chId)) {
         this.sseByChannel.set(chId, new Map())
       }
@@ -157,7 +157,7 @@ export class WebPlugin implements Plugin {
       onAgentComplete: (agent: AgentConfig, envelope: Envelope) => {
         for (const dept of this.atlasConfig!.departments) {
           if (!dept.enabled) continue
-          pushToChannel(deptChannelId(dept.name), JSON.stringify({
+          pushToChannel(deptChannelId(dept.id), JSON.stringify({
             type: 'atlas-agent',
             agent: agent.display_name ?? agent.name,
             layer: agent.layer,
@@ -173,7 +173,7 @@ export class WebPlugin implements Plugin {
       onLayerComplete: (synthesis) => {
         for (const dept of this.atlasConfig!.departments) {
           if (!dept.enabled) continue
-          pushToChannel(deptChannelId(dept.name), JSON.stringify({
+          pushToChannel(deptChannelId(dept.id), JSON.stringify({
             type: 'atlas-layer',
             layer: synthesis.layer,
             direction: synthesis.direction,
@@ -188,7 +188,7 @@ export class WebPlugin implements Plugin {
         for (const dept of this.atlasConfig!.departments) {
           if (!dept.enabled) continue
           if (dept.name === report.department || dept.id === report.department) {
-            pushToChannel(deptChannelId(dept.name), JSON.stringify({
+            pushToChannel(deptChannelId(dept.id), JSON.stringify({
               type: 'atlas-report',
               department: report.department,
               direction: report.direction,

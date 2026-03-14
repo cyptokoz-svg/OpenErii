@@ -86,7 +86,7 @@ export async function bootstrapAtlas(
       // Push to all atlas department channels (the pipeline doesn't expose dept in callback args)
       for (const dept of config.departments) {
         if (!dept.enabled) continue
-        pushToChannel(deptChannelId(dept.name), data)
+        pushToChannel(deptChannelId(dept.id), data)
       }
     },
     onLayerComplete: (synthesis) => {
@@ -102,7 +102,7 @@ export async function bootstrapAtlas(
       })
       for (const dept of config.departments) {
         if (!dept.enabled) continue
-        pushToChannel(deptChannelId(dept.name), data)
+        pushToChannel(deptChannelId(dept.id), data)
       }
     },
     onReportComplete: (report) => {
@@ -119,7 +119,7 @@ export async function bootstrapAtlas(
             summary: report.summary,
             timestamp: report.timestamp,
           })
-          pushToChannel(deptChannelId(dept.name), data)
+          pushToChannel(deptChannelId(dept.id), data)
         }
       }
     },

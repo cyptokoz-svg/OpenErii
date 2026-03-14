@@ -1,7 +1,121 @@
 import { useState, useEffect, useCallback } from 'react'
 import { PageHeader } from '../components/PageHeader'
-import { atlasApi, type AtlasStatus, type AgentScoreItem } from '../api/atlas'
+import { atlasApi, type AtlasStatus, type AgentScoreItem, type AtlasAgent } from '../api/atlas'
 import { useLocale } from '../i18n'
+
+// ==================== Layer colors & icons ====================
+
+const LAYER_META: Record<string, { color: string; icon: string; labelKey: string }> = {
+  L1: { color: 'text-blue-400', icon: '🌍', labelKey: 'atlas.macro_layer' },
+  L2: { color: 'text-emerald-400', icon: '🏭', labelKey: 'atlas.sector_layer' },
+  L3: { color: 'text-amber-400', icon: '📊', labelKey: 'atlas.strategy_layer' },
+  L4: { color: 'text-purple-400', icon: '🎯', labelKey: 'atlas.decision_layer' },
+}
+
+/** Chinese display names for known agents */
+const AGENT_ZH: Record<string, string> = {
+  fed_watcher: '美联储观察',
+  dollar_fx: '美元/外汇',
+  inflation_tracker: '通胀追踪',
+  geopolitical: '地缘政治',
+  global_central_banks: '全球央行',
+  yield_curve: '收益率曲线',
+  liquidity_monitor: '流动性监测',
+  china_macro: '中国宏观',
+  emerging_markets: '新兴市场',
+  shipping_logistics: '航运物流',
+  energy_desk: '能源分析',
+  precious_metals: '贵金属分析',
+  industrial_metals: '工业金属分析',
+  agriculture: '农产品分析',
+  soft_commodities: '软商品分析',
+  livestock: '畜牧业分析',
+  carbon_esg: '碳排放与ESG',
+  trend_follower: '趋势跟踪',
+  mean_reversion: '均值回归',
+  fundamental_value: '基本面价值',
+  event_driven: '事件驱动',
+  cro: '首席风控官 (CRO)',
+  portfolio_manager: '投资组合经理',
+  devils_advocate: '魔鬼代言人',
+  cio: '首席投资官 (CIO)',
+}
+
+// ==================== Agent Card ====================
+
+function AgentCard({ agent, locale }: { agent: AtlasAgent; locale: string }) {
+  const name = locale === 'zh' ? (AGENT_ZH[agent.name] ?? agent.display_name) : agent.display_name
+  const meta = LAYER_META[agent.layer] ?? { color: 'text-text-muted', icon: '❓' }
+  const symbols = agent.data_sources.flatMap((ds) => ds.symbols).filter(Boolean)
+
+  return (
+    <div className="border border-border rounded-lg p-3 bg-bg-secondary hover:border-border-hover transition-colors">
+      <div className="flex items-center gap-2 mb-1.5">
+        <span className="text-base">{meta.icon}</span>
+        <span className="text-[13px] font-semibold text-text flex-1 truncate">{name}</span>
+        <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${meta.color} bg-bg-tertiary`}>
+          {agent.layer}
+        </span>
+      </div>
+      {symbols.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-1.5">
+          {symbols.slice(0, 6).map((s) => (
+            <span key={s} className="text-[10px] px-1.5 py-0.5 rounded-full bg-bg-tertiary text-text-muted font-mono">
+              {s}
+            </span>
+          ))}
+          {symbols.length > 6 && (
+            <span className="text-[10px] text-text-muted">+{symbols.length - 6}</span>
+          )}
+        </div>
+      )}
+      {agent.knowledge_links.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-1.5">
+          {agent.knowledge_links.map((k) => (
+            <span key={k} className="text-[10px] px-1.5 py-0.5 rounded-full bg-accent/10 text-accent">
+              #{k}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ==================== Agent Team Grid ====================
+
+function AgentTeamGrid({ agents, locale }: { agents: AtlasAgent[]; locale: string }) {
+  const { t } = useLocale()
+  const layers: [string, AtlasAgent[]][] = ['L1', 'L2', 'L3', 'L4'].map((layer) => [
+    layer,
+    agents.filter((a) => a.layer === layer),
+  ])
+
+  return (
+    <div className="space-y-6">
+      {layers.map(([layer, layerAgents]) => {
+        if (layerAgents.length === 0) return null
+        const meta = LAYER_META[layer] ?? { color: 'text-text-muted', icon: '❓', labelKey: '' }
+        const labelKey = meta.labelKey as keyof ReturnType<typeof t extends (k: infer K) => string ? never : never>
+        return (
+          <div key={layer}>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-base">{meta.icon}</span>
+              <h3 className={`text-[13px] font-semibold uppercase tracking-wider ${meta.color}`}>
+                {t(meta.labelKey as any)} ({layerAgents.length})
+              </h3>
+            </div>
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {layerAgents.map((agent) => (
+                <AgentCard key={agent.name} agent={agent} locale={locale} />
+              ))}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
 // ==================== Scorecard Table ====================
 
@@ -96,8 +210,9 @@ function DepartmentCard({
 // ==================== Page ====================
 
 export function AtlasPage() {
-  const { t } = useLocale()
+  const { t, locale } = useLocale()
   const [status, setStatus] = useState<AtlasStatus | null>(null)
+  const [agents, setAgents] = useState<AtlasAgent[]>([])
   const [scorecard, setScorecard] = useState<AgentScoreItem[]>([])
   const [selectedDept, setSelectedDept] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
@@ -115,6 +230,16 @@ export function AtlasPage() {
     }
   }, [selectedDept])
 
+  const loadAgents = useCallback(async () => {
+    if (!selectedDept) return
+    try {
+      const data = await atlasApi.getAgents(selectedDept)
+      setAgents(data.agents)
+    } catch {
+      setAgents([])
+    }
+  }, [selectedDept])
+
   const loadScorecard = useCallback(async () => {
     if (!selectedDept) return
     try {
@@ -126,6 +251,7 @@ export function AtlasPage() {
   }, [selectedDept])
 
   useEffect(() => { loadStatus() }, [loadStatus])
+  useEffect(() => { loadAgents() }, [loadAgents])
   useEffect(() => { loadScorecard() }, [loadScorecard])
 
   const handleRun = async (deptId: string) => {
@@ -177,8 +303,18 @@ export function AtlasPage() {
         )}
       </section>
 
+      {/* Agent Team Roster */}
+      {agents.length > 0 && (
+        <section className="mt-8">
+          <h2 className="text-[13px] font-semibold text-text-muted uppercase tracking-wider mb-4">
+            {t('atlas.team_roster')} — {agents.length} AI
+          </h2>
+          <AgentTeamGrid agents={agents} locale={locale} />
+        </section>
+      )}
+
       {/* Scorecard */}
-      {selectedDept && (
+      {selectedDept && scorecard.length > 0 && (
         <section className="mt-8">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-[13px] font-semibold text-text-muted uppercase tracking-wider">

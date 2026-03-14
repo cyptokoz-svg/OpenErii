@@ -47,6 +47,13 @@ export interface TranslationKeys {
   'atlas.final_report': string
   'atlas.layer_complete': string
   'atlas.agreement': string
+  'atlas.team_roster': string
+  'atlas.macro_layer': string
+  'atlas.sector_layer': string
+  'atlas.strategy_layer': string
+  'atlas.decision_layer': string
+  'atlas.data_sources_label': string
+  'atlas.knowledge_label': string
 
   // Common
   'common.loading': string

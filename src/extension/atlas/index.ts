@@ -22,4 +22,4 @@ export { DataBridge } from './data-bridge.js'
 // Alice integration
 export { createAtlasTools } from './adapter.js'
 export { bootstrapAtlas } from './bootstrap.js'
-export { ensureAtlasChannels, deptChannelId, agentChannelId } from './channels.js'
+export { ensureAtlasChannels, deptChannelId } from './channels.js'

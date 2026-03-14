@@ -25,6 +25,16 @@ export interface AgentScoreItem {
   last_signal_date: string
 }
 
+export interface AtlasAgent {
+  name: string
+  display_name: string
+  layer: string
+  style: string
+  enabled: boolean
+  knowledge_links: string[]
+  data_sources: { provider: string; type: string; symbols: string[] }[]
+}
+
 export interface KnowledgeStats {
   total_notes: number
   total_size_kb: number
@@ -36,6 +46,12 @@ export const atlasApi = {
   async getStatus(): Promise<AtlasStatus> {
     const res = await fetch('/api/atlas/status')
     if (!res.ok) throw new Error('Failed to load atlas status')
+    return res.json()
+  },
+
+  async getAgents(department: string): Promise<{ agents: AtlasAgent[] }> {
+    const res = await fetch(`/api/atlas/agents/${encodeURIComponent(department)}`)
+    if (!res.ok) throw new Error('Failed to load agents')
     return res.json()
   },
 

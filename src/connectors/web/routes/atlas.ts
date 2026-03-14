@@ -8,7 +8,7 @@
 import { Hono } from 'hono'
 import type { AtlasPipeline } from '../../../extension/atlas/pipeline.js'
 import type { AtlasConfig } from '../../../extension/atlas/types.js'
-import { loadAtlasConfig } from '../../../extension/atlas/config.js'
+import { loadAtlasConfig, loadDepartmentAgents } from '../../../extension/atlas/config.js'
 
 export interface AtlasRoutesDeps {
   getPipeline: () => AtlasPipeline | null
@@ -41,6 +41,34 @@ export function createAtlasRoutes(deps: AtlasRoutesDeps) {
         last_run: pipeline?.getLastRunTimestamp(d.id) ?? null,
       })),
     })
+  })
+
+  /** GET /api/atlas/agents/:department — List all agents in a department */
+  app.get('/agents/:department', async (c) => {
+    let config = deps.getConfig()
+    if (!config) {
+      try { config = await loadAtlasConfig() } catch { return c.json({ agents: [] }) }
+    }
+    const departmentId = c.req.param('department')
+    const dept = config.departments.find((d) => d.id === departmentId)
+    if (!dept) return c.json({ error: 'Department not found' }, 404)
+
+    try {
+      const agents = await loadDepartmentAgents(dept)
+      return c.json({
+        agents: agents.map((a) => ({
+          name: a.name,
+          display_name: a.display_name,
+          layer: a.layer,
+          style: a.style,
+          enabled: a.enabled,
+          knowledge_links: a.knowledge_links,
+          data_sources: a.data_sources.map((ds) => ({ provider: ds.provider, type: ds.type, symbols: ds.symbols })),
+        })),
+      })
+    } catch (err) {
+      return c.json({ error: String(err) }, 400)
+    }
   })
 
   /** GET /api/atlas/scorecard/:department — Agent performance data */

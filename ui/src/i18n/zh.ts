@@ -45,6 +45,13 @@ export const zh: TranslationKeys = {
   'atlas.final_report': '最终报告',
   'atlas.layer_complete': '完成',
   'atlas.agreement': '一致性',
+  'atlas.team_roster': '投研团队',
+  'atlas.macro_layer': 'L1 宏观分析',
+  'atlas.sector_layer': 'L2 行业分析',
+  'atlas.strategy_layer': 'L3 策略分析',
+  'atlas.decision_layer': 'L4 决策层',
+  'atlas.data_sources_label': '数据源',
+  'atlas.knowledge_label': '知识图谱',
 
   // 通用
   'common.loading': '加载中...',

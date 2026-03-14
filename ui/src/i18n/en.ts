@@ -45,6 +45,13 @@ export const en: TranslationKeys = {
   'atlas.final_report': 'Final Report',
   'atlas.layer_complete': 'Complete',
   'atlas.agreement': 'Agreement',
+  'atlas.team_roster': 'Research Team',
+  'atlas.macro_layer': 'L1 Macro',
+  'atlas.sector_layer': 'L2 Sector',
+  'atlas.strategy_layer': 'L3 Strategy',
+  'atlas.decision_layer': 'L4 Decision',
+  'atlas.data_sources_label': 'Data Sources',
+  'atlas.knowledge_label': 'Knowledge',
 
   // Common
   'common.loading': 'Loading...',

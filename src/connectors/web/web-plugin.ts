@@ -152,50 +152,79 @@ export class WebPlugin implements Plugin {
       }
     }
 
-    // Pipeline callbacks — push agent analysis to research channels
+    // Direction emoji helper
+    const dirEmoji = (d: string) => d === 'bullish' ? '🟢' : d === 'bearish' ? '🔴' : '⚪'
+    // Agent Chinese name lookup
+    const AGENT_ZH: Record<string, string> = {
+      fed_watcher: '美联储观察', dollar_fx: '美元/外汇', inflation_tracker: '通胀追踪',
+      geopolitical: '地缘政治', global_central_banks: '全球央行', yield_curve: '收益率曲线',
+      liquidity_monitor: '流动性监测', china_macro: '中国宏观', emerging_markets: '新兴市场',
+      shipping_logistics: '航运物流', energy_desk: '能源分析', precious_metals: '贵金属分析',
+      industrial_metals: '工业金属分析', agriculture: '农产品分析', soft_commodities: '软商品分析',
+      livestock: '畜牧业分析', carbon_esg: '碳排放与ESG', trend_follower: '趋势跟踪',
+      mean_reversion: '均值回归', fundamental_value: '基本面价值', event_driven: '事件驱动',
+      cro: '首席风控官', portfolio_manager: '投资组合经理', devils_advocate: '魔鬼代言人',
+      cio: '首席投资官',
+    }
+    const agentName = (a: AgentConfig) => AGENT_ZH[a.name] ?? a.display_name ?? a.name
+
+    // Pipeline callbacks — push agent analysis as chat messages to research channel
     const callbacks: PipelineCallbacks = {
       onAgentComplete: (agent: AgentConfig, envelope: Envelope) => {
+        const dir = envelope.signal.direction
+        const conv = envelope.signal.conviction
+        const summary = envelope.reasoning?.summary ?? ''
+        const factors = (envelope.reasoning?.key_factors ?? []).map((f: string) => `  • ${f}`).join('\n')
+        const caveats = envelope.reasoning?.caveats ?? ''
+        const positions = (envelope.signal.positions ?? []).map((p: any) => `  📌 ${p.asset}: ${p.direction} ${p.size_pct}%`).join('\n')
+
+        const text = [
+          `${dirEmoji(dir)} **${agentName(agent)}** [${agent.layer}]`,
+          `方向: ${dir}  信心: ${conv}/10`,
+          '',
+          summary,
+          factors ? `\n关键因素:\n${factors}` : '',
+          caveats ? `\n⚠ 风险提示: ${caveats}` : '',
+          positions ? `\n建议持仓:\n${positions}` : '',
+        ].filter(Boolean).join('\n')
+
         for (const dept of this.atlasConfig!.departments) {
           if (!dept.enabled) continue
           pushToChannel(deptChannelId(dept.id), JSON.stringify({
-            type: 'atlas-agent',
-            agent: agent.display_name ?? agent.name,
-            layer: agent.layer,
-            direction: envelope.signal.direction,
-            conviction: envelope.signal.conviction,
-            reasoning: envelope.reasoning,
-            positions: envelope.signal.positions,
-            knowledge_updates: envelope.knowledge_updates,
-            timestamp: envelope.timestamp,
+            type: 'message', kind: 'notification', text,
           }))
         }
       },
       onLayerComplete: (synthesis) => {
+        const text = [
+          `━━━ ${synthesis.layer} 层级综合 ━━━`,
+          `${dirEmoji(synthesis.direction)} 方向: ${synthesis.direction}  信心: ${synthesis.conviction}/10  一致性: ${Math.round(synthesis.agreement_ratio * 100)}%`,
+          '',
+          synthesis.summary,
+        ].join('\n')
+
         for (const dept of this.atlasConfig!.departments) {
           if (!dept.enabled) continue
           pushToChannel(deptChannelId(dept.id), JSON.stringify({
-            type: 'atlas-layer',
-            layer: synthesis.layer,
-            direction: synthesis.direction,
-            conviction: synthesis.conviction,
-            agreement: synthesis.agreement_ratio,
-            summary: synthesis.summary,
-            timestamp: new Date().toISOString(),
+            type: 'message', kind: 'notification', text,
           }))
         }
       },
       onReportComplete: (report) => {
+        const positions = (report.positions ?? []).map((p: any) => `  📌 ${p.asset}: ${p.direction} ${p.size_pct}%`).join('\n')
+        const text = [
+          `🏁 ═══ 最终投资报告 ═══`,
+          `${dirEmoji(report.direction)} 方向: ${report.direction}  信心: ${report.conviction}/10`,
+          '',
+          report.summary,
+          positions ? `\n持仓建议:\n${positions}` : '',
+        ].filter(Boolean).join('\n')
+
         for (const dept of this.atlasConfig!.departments) {
           if (!dept.enabled) continue
           if (dept.name === report.department || dept.id === report.department) {
             pushToChannel(deptChannelId(dept.id), JSON.stringify({
-              type: 'atlas-report',
-              department: report.department,
-              direction: report.direction,
-              conviction: report.conviction,
-              positions: report.positions,
-              summary: report.summary,
-              timestamp: report.timestamp,
+              type: 'message', kind: 'notification', text,
             }))
           }
         }

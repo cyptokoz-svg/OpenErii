@@ -81,18 +81,33 @@ export class AtlasPipeline {
 
   async run(opts: AtlasRunOpts): Promise<AtlasReport> {
     const startTime = Date.now()
+    const { department, agents, kg, scorecard, weights, runner } = await this.preparePipeline(opts)
+
+    const { layerResults, allEnvelopes, skippedAgents, totalCalls, skippedCalls } =
+      await this.executeLayers(agents, runner, weights, department.id, opts.skip_layers)
+
+    const report = await this.buildReport(
+      opts.department, layerResults, allEnvelopes, skippedAgents,
+      totalCalls, skippedCalls, scorecard,
+    )
+
+    this.lastRunTimestamps.set(opts.department, report.timestamp)
+    await this.callbacks.onReportComplete?.(report)
+
+    const elapsed = Date.now() - startTime
+    console.log(`atlas: ${opts.department} pipeline completed in ${elapsed}ms (${totalCalls - skippedCalls} LLM calls)`)
+
+    return report
+  }
+
+  /** Validate opts, load department agents, init knowledge graph and scorecard. */
+  private async preparePipeline(opts: AtlasRunOpts) {
     const department = this.config.departments.find((d) => d.id === opts.department)
-    if (!department) {
-      throw new Error(`atlas: department "${opts.department}" not found`)
-    }
-    if (!department.enabled) {
-      throw new Error(`atlas: department "${opts.department}" is disabled`)
-    }
+    if (!department) throw new Error(`atlas: department "${opts.department}" not found`)
+    if (!department.enabled) throw new Error(`atlas: department "${opts.department}" is disabled`)
 
     const agents = await loadDepartmentAgents(department)
-    if (agents.length === 0) {
-      throw new Error(`atlas: no enabled agents in "${opts.department}"`)
-    }
+    if (agents.length === 0) throw new Error(`atlas: no enabled agents in "${opts.department}"`)
 
     const kg = this.getKnowledgeGraph(department.id)
     await kg.init()
@@ -109,106 +124,92 @@ export class AtlasPipeline {
       dataFetch: this.dataFetch,
     })
 
-    const skipLayers = new Set(opts.skip_layers ?? [])
+    return { department, agents, kg, scorecard, weights, runner }
+  }
+
+  /** Execute L1→L4 in sequence, each layer's agents run concurrently (except L4). */
+  private async executeLayers(
+    agents: AgentConfig[],
+    runner: AgentRunner,
+    weights: Record<string, number>,
+    departmentId: string,
+    skipLayersList?: Layer[],
+  ) {
+    const skipLayers = new Set(skipLayersList ?? [])
     const layerResults: Partial<Record<Layer, LayerSynthesis>> = {}
     const allEnvelopes: Envelope[] = []
     const skippedAgents: string[] = []
     let totalCalls = 0
     let skippedCalls = 0
-
-    // ==================== Run Layers ====================
-
     const upstreamContext: LayerSynthesis[] = []
 
     for (const layer of LAYERS) {
       if (skipLayers.has(layer)) continue
-
       const layerAgents = agents.filter((a) => a.layer === layer)
       if (layerAgents.length === 0) continue
 
       const envelopes = await this.runLayer(
-        layer,
-        layerAgents,
-        runner,
-        weights,
-        department.id,
-        upstreamContext,
-        skippedAgents,
+        layer, layerAgents, runner, weights, departmentId, upstreamContext, skippedAgents,
       )
 
       totalCalls += layerAgents.length
       skippedCalls += layerAgents.length - envelopes.length + skippedAgents.length
-
       allEnvelopes.push(...envelopes)
 
       const synthesis = synthesizeLayer(layer, envelopes)
       layerResults[layer] = synthesis
       upstreamContext.push(synthesis)
-
       await this.callbacks.onLayerComplete?.(synthesis)
     }
 
-    // ==================== Build Report ====================
+    return { layerResults, allEnvelopes, skippedAgents, totalCalls, skippedCalls }
+  }
 
-    const l4 = layerResults.L4
-    const finalSignal = l4 ?? layerResults.L3 ?? layerResults.L2 ?? layerResults.L1
-
-    // Record signals for scorecard
+  /** Assemble final report from layer results + scorecard data. */
+  private async buildReport(
+    departmentId: string,
+    layerResults: Partial<Record<Layer, LayerSynthesis>>,
+    allEnvelopes: Envelope[],
+    skippedAgents: string[],
+    totalCalls: number,
+    skippedCalls: number,
+    scorecard: Scorecard,
+  ): Promise<AtlasReport> {
+    // Record signals
     for (const env of allEnvelopes) {
       scorecard.recordSignal(
-        env.agent,
-        env.signal.direction,
-        env.signal.conviction,
-        env.signal.targets,
-        new Date().toISOString().slice(0, 10),
+        env.agent, env.signal.direction, env.signal.conviction,
+        env.signal.targets, new Date().toISOString().slice(0, 10),
       )
     }
     await scorecard.save()
 
-    // Find best/worst agents
     const agentScores = scorecard.getAllScores()
-    const sortedByWeight = [...agentScores].sort((a, b) => b.weight - a.weight)
-    const topAgent = sortedByWeight[0]?.agent ?? 'unknown'
-    const worstAgent = sortedByWeight[sortedByWeight.length - 1]?.agent ?? 'unknown'
+    const sorted = [...agentScores].sort((a, b) => b.weight - a.weight)
+    const l4 = layerResults.L4
+    const finalSignal = l4 ?? layerResults.L3 ?? layerResults.L2 ?? layerResults.L1
 
-    // L4 positions or empty
     const positions = l4?.envelopes
       .flatMap((e) => e.signal.positions)
       .filter((p) => p.size_pct > 0) ?? []
 
-    const report: AtlasReport = {
-      department: opts.department,
+    return {
+      department: departmentId,
       timestamp: new Date().toISOString(),
       direction: finalSignal?.direction ?? 'NEUTRAL',
       conviction: finalSignal?.conviction ?? 0,
       positions,
       summary: finalSignal?.summary ?? 'No analysis produced',
-      layers: {
-        l1: layerResults.L1,
-        l2: layerResults.L2,
-        l3: layerResults.L3,
-        l4: layerResults.L4,
-      },
+      layers: { l1: layerResults.L1, l2: layerResults.L2, l3: layerResults.L3, l4: layerResults.L4 },
       confidence: {
         layer_agreement: this.computeLayerAgreement(layerResults),
         historical_accuracy: scorecard.getOverallAccuracy(),
-        top_agent: topAgent,
-        worst_agent: worstAgent,
+        top_agent: sorted[0]?.agent ?? 'unknown',
+        worst_agent: sorted[sorted.length - 1]?.agent ?? 'unknown',
       },
       skipped_agents: skippedAgents,
-      cost_estimate: {
-        total_calls: totalCalls,
-        skipped_calls: skippedCalls,
-      },
+      cost_estimate: { total_calls: totalCalls, skipped_calls: skippedCalls },
     }
-
-    this.lastRunTimestamps.set(opts.department, report.timestamp)
-    await this.callbacks.onReportComplete?.(report)
-
-    const elapsed = Date.now() - startTime
-    console.log(`atlas: ${opts.department} pipeline completed in ${elapsed}ms (${totalCalls - skippedCalls} LLM calls)`)
-
-    return report
   }
 
   /** Get last run timestamp for a department. */

@@ -531,6 +531,7 @@ async function main() {
     getAccountGit: (id: string): ITradingGit | undefined => accountSetups.get(id)?.git,
     reconnectAccount,
     reconnectConnectors,
+    extensions: { newsStore },
   }
 
   for (const plugin of [...corePlugins, ...optionalPlugins.values()]) {

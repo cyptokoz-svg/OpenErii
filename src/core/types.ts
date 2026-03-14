@@ -39,6 +39,9 @@ export interface EngineContext {
   reconnectAccount: (accountId: string) => Promise<ReconnectResult>
   /** Reconnect connector plugins (Telegram, MCP-Ask, etc.). */
   reconnectConnectors: () => Promise<ReconnectResult>
+
+  /** Extension-specific dependencies (avoids tight coupling). */
+  extensions?: Record<string, unknown>
 }
 
 /** A media attachment collected from tool results (e.g. browser screenshots). */

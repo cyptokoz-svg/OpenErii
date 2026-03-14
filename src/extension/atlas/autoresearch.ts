@@ -10,6 +10,10 @@ import { readFile, writeFile, copyFile } from 'fs/promises'
 import { resolve, dirname } from 'path'
 import { mkdir } from 'fs/promises'
 import { createHash } from 'crypto'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
+
+const execFileAsync = promisify(execFile)
 import type { AtlasConfig, EvolutionEntry, AgentScore } from './types.js'
 import { Scorecard } from './scorecard.js'
 import { getDepartmentDataDir } from './config.js'
@@ -160,9 +164,10 @@ export class AutoResearch {
     const currentPrompt = await readFile(promptFile, 'utf-8')
     const currentHash = this.hash(currentPrompt)
 
-    // Backup current prompt
+    // Backup current prompt (file copy + git snapshot)
     const backupFile = promptFile + '.backup'
     await copyFile(promptFile, backupFile)
+    await this.gitSnapshot(promptFile, `backup: ${worst.agent} before evolution (Sharpe=${worst.sharpe.toFixed(2)})`)
 
     // Generate improved prompt via LLM
     const newPrompt = await this.generateImprovedPrompt(worst, currentPrompt)
@@ -180,8 +185,9 @@ export class AutoResearch {
       }
     }
 
-    // Apply new prompt
+    // Apply new prompt + git snapshot
     await writeFile(promptFile, newPrompt)
+    await this.gitSnapshot(promptFile, `evolve: ${worst.agent} — new prompt (Sharpe=${worst.sharpe.toFixed(2)})`)
 
     // Log experiment
     const entry: EvolutionEntry = {
@@ -247,6 +253,7 @@ ${currentPrompt}
     const backupFile = promptFile + '.backup'
     try {
       await copyFile(backupFile, promptFile)
+      await this.gitSnapshot(promptFile, `revert: ${entry.agent} — Sharpe did not improve (${entry.sharpe_before.toFixed(2)} → ${entry.sharpe_after?.toFixed(2) ?? '?'})`)
     } catch {
       console.warn(`atlas: failed to revert prompt for ${entry.agent}`)
     }
@@ -273,7 +280,25 @@ ${currentPrompt}
 
   private async findPromptFile(agentName: string): Promise<string | null> {
     const dataDir = getDepartmentDataDir(this.departmentId)
-    // Try common patterns
+
+    // First: try to find prompt_file from agent config (authoritative source)
+    try {
+      const dept = this.config.departments.find((d) => d.id === this.departmentId)
+      if (dept) {
+        const { loadDepartmentAgents } = await import('./config.js')
+        const agents = await loadDepartmentAgents(dept)
+        const agent = agents.find((a) => a.name === agentName)
+        if (agent?.prompt_file) {
+          const fullPath = resolve(dataDir, agent.prompt_file)
+          try {
+            await readFile(fullPath, 'utf-8')
+            return fullPath
+          } catch { /* file doesn't exist at configured path, fall through */ }
+        }
+      }
+    } catch { /* config load failed, fall through to guessing */ }
+
+    // Fallback: try common naming patterns
     const patterns = [
       `prompts/l1_${agentName}.md`,
       `prompts/l2_${agentName}.md`,

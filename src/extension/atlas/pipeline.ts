@@ -103,6 +103,17 @@ export class AtlasPipeline {
     )
 
     this.lastRunTimestamps.set(opts.department, report.timestamp)
+
+    // Knowledge Graph GC: trim stale notes to prevent vault bloat
+    try {
+      const gcResult = await kg.gc()
+      if (gcResult.trimmed > 0) {
+        console.log(`atlas: KG GC — trimmed ${gcResult.trimmed} stale entries, archived ${gcResult.archived}`)
+      }
+    } catch (err) {
+      console.warn('atlas: KG GC failed:', err)
+    }
+
     await this.callbacks.onReportComplete?.(report)
 
     const elapsed = Date.now() - startTime

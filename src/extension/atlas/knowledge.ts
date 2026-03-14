@@ -234,12 +234,34 @@ export class KnowledgeGraph {
     }
   }
 
-  /** Process knowledge_updates from an agent envelope. */
-  async writeUpdatesFromEnvelope(agentName: string, updates: KnowledgeUpdate[]): Promise<void> {
-    for (const ku of updates) {
+  /** Process knowledge_updates from an agent envelope with validation. */
+  async writeUpdatesFromEnvelope(agentName: string, updates: KnowledgeUpdate[]): Promise<number> {
+    // Validate: must have file + content, filter out malformed entries
+    const valid = updates.filter(
+      (ku) =>
+        typeof ku === 'object' &&
+        ku !== null &&
+        typeof ku.file === 'string' &&
+        ku.file.length > 0 &&
+        typeof ku.content === 'string' &&
+        ku.content.length > 0 &&
+        // Prevent path traversal
+        !ku.file.includes('..') &&
+        !ku.file.includes('/'),
+    )
+
+    if (valid.length < updates.length) {
+      console.warn(
+        `atlas: ${agentName} — filtered ${updates.length - valid.length} invalid knowledge updates`,
+      )
+    }
+
+    for (const ku of valid) {
       const category = CATEGORY_MAP[ku.type] ?? 'commodities'
       await this.writeNote(ku.file, ku.content, category, null, agentName, ku.type)
     }
+
+    return valid.length
   }
 
   // ==================== GC ====================

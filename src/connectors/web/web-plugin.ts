@@ -25,6 +25,8 @@ import { AutoResearch } from '../../extension/atlas/autoresearch.js'
 import { createAtlasTools } from '../../extension/atlas/adapter.js'
 import { DataBridge, type DataBridgeDeps } from '../../extension/atlas/data-bridge.js'
 import type { NewsCollectorStore } from '../../extension/news-collector/store.js'
+import type { EquityClientLike } from '../../openbb/sdk/types.js'
+import type { PriceBar } from '../../extension/atlas/data-bridge.js'
 import type { AtlasConfig, AgentConfig, Envelope, PipelineCallbacks } from '../../extension/atlas/types.js'
 import type { LLMCallFn } from '../../extension/atlas/runner.js'
 
@@ -282,15 +284,46 @@ export class WebPlugin implements Plugin {
       return result.text
     }
 
-    // Bug #4 fix: Wire DataBridge with newsStore (if available) instead of dummy string
+    // Wire DataBridge with real data sources from ctx.extensions
     const newsStore = ctx.extensions?.newsStore as NewsCollectorStore | undefined
+    const equityClient = ctx.extensions?.equityClient as EquityClientLike | undefined
+
+    // Interval → OpenBB interval mapping
+    const intervalMap: Record<string, string> = {
+      '15m': '15m', '1h': '1h', '4h': '4h', '1d': '1d', '1w': '1w', '1M': '1M',
+    }
+
     const dataBridgeDeps: DataBridgeDeps = {
-      fetchPrice: async (_symbol: string, _interval: string) => {
-        // TODO: wire OpenBB equity/crypto clients for live price data
-        return []
+      fetchPrice: async (symbol: string, interval: string): Promise<PriceBar[]> => {
+        if (!equityClient) return []
+        try {
+          const obbInterval = intervalMap[interval] ?? '1d'
+          // Build start_date: go back enough bars for 20-bar lookback
+          const daysBack = obbInterval === '1d' ? 30 : obbInterval === '4h' ? 10 : 5
+          const startDate = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000)
+            .toISOString().slice(0, 10)
+          const rows = await equityClient.getHistorical({
+            symbol,
+            start_date: startDate,
+            interval: obbInterval,
+          })
+          return rows.map((r) => ({
+            date: String(r.date ?? ''),
+            open: Number(r.open ?? 0),
+            high: Number(r.high ?? 0),
+            low: Number(r.low ?? 0),
+            close: Number(r.close ?? 0),
+            volume: Number(r.volume ?? 0),
+          }))
+        } catch (err) {
+          console.warn(`atlas: fetchPrice failed for ${symbol} (${interval}):`, err)
+          return []
+        }
       },
       fetchMacro: async (_provider: string, _query: string, _symbols: string[]) => {
-        // TODO: wire OpenBB macro data
+        // Macro data (FRED series etc.) requires a dedicated macro client
+        // which is not currently available in the OpenBB adapter layer.
+        // Agents will receive empty macro data and rely on LLM knowledge.
         return []
       },
       newsStore: newsStore!,

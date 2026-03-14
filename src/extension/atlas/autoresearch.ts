@@ -278,6 +278,12 @@ ${currentPrompt}
     return createHash('sha256').update(content).digest('hex').slice(0, 12)
   }
 
+  /** Snapshot a file change for audit trail. No-op if git is not configured. */
+  private async gitSnapshot(_filePath: string, _message: string): Promise<void> {
+    // TODO: integrate with git for prompt version control
+    // For now, file backups (.backup) provide the rollback mechanism
+  }
+
   private async findPromptFile(agentName: string): Promise<string | null> {
     const dataDir = getDepartmentDataDir(this.departmentId)
 

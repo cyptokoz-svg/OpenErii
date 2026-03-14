@@ -1,12 +1,15 @@
 import { useState, useEffect, useCallback } from 'react'
 import { PageHeader } from '../components/PageHeader'
 import { atlasApi, type AtlasStatus, type AgentScoreItem } from '../api/atlas'
+import { useLocale } from '../i18n'
 
 // ==================== Scorecard Table ====================
 
 function ScorecardTable({ agents }: { agents: AgentScoreItem[] }) {
+  const { t } = useLocale()
+
   if (agents.length === 0) {
-    return <p className="text-[13px] text-text-muted">No scored agents yet. Run an analysis first.</p>
+    return <p className="text-[13px] text-text-muted">{t('atlas.no_agents')}</p>
   }
 
   return (
@@ -14,13 +17,13 @@ function ScorecardTable({ agents }: { agents: AgentScoreItem[] }) {
       <table className="w-full text-[13px]">
         <thead>
           <tr className="border-b border-border text-left text-text-muted">
-            <th className="py-2 pr-3 font-medium">Agent</th>
-            <th className="py-2 pr-3 font-medium">Layer</th>
-            <th className="py-2 pr-3 font-medium text-right">Weight</th>
-            <th className="py-2 pr-3 font-medium text-right">Sharpe</th>
-            <th className="py-2 pr-3 font-medium text-right">Win %</th>
-            <th className="py-2 pr-3 font-medium text-right">Signals</th>
-            <th className="py-2 font-medium text-right">Avg Conv.</th>
+            <th className="py-2 pr-3 font-medium">{t('atlas.agent')}</th>
+            <th className="py-2 pr-3 font-medium">{t('atlas.layer')}</th>
+            <th className="py-2 pr-3 font-medium text-right">{t('atlas.weight')}</th>
+            <th className="py-2 pr-3 font-medium text-right">{t('atlas.sharpe')}</th>
+            <th className="py-2 pr-3 font-medium text-right">{t('atlas.win_rate')}</th>
+            <th className="py-2 pr-3 font-medium text-right">{t('atlas.signals')}</th>
+            <th className="py-2 font-medium text-right">{t('atlas.avg_conviction')}</th>
           </tr>
         </thead>
         <tbody>
@@ -60,6 +63,8 @@ function DepartmentCard({
   onRun: (id: string) => void
   running: boolean
 }) {
+  const { t } = useLocale()
+
   return (
     <div className="border border-border rounded-lg p-4 bg-bg-secondary">
       <div className="flex items-center justify-between mb-2">
@@ -68,12 +73,12 @@ function DepartmentCard({
           <h3 className="text-[15px] font-semibold text-text">{dept.name}</h3>
         </div>
         <span className={`text-[11px] px-2 py-0.5 rounded-full ${dept.enabled ? 'bg-green/10 text-green' : 'bg-bg-tertiary text-text-muted'}`}>
-          {dept.enabled ? 'ON' : 'OFF'}
+          {dept.enabled ? t('atlas.on') : t('atlas.off')}
         </span>
       </div>
       <div className="text-[12px] text-text-muted mb-3">
-        <p>Timeframes: {dept.timeframes.join(', ')}</p>
-        <p>Last run: {dept.last_run ? new Date(dept.last_run).toLocaleString() : 'never'}</p>
+        <p>{t('atlas.timeframes')}: {dept.timeframes.join(', ')}</p>
+        <p>{t('atlas.last_run')}: {dept.last_run ? new Date(dept.last_run).toLocaleString() : t('atlas.never')}</p>
       </div>
       {dept.enabled && (
         <button
@@ -81,7 +86,7 @@ function DepartmentCard({
           disabled={running}
           className="px-3 py-1.5 text-[13px] font-medium rounded-md bg-accent text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
         >
-          {running ? 'Running...' : '▶ Run Analysis'}
+          {running ? t('atlas.running') : t('atlas.run_analysis')}
         </button>
       )}
     </div>
@@ -91,6 +96,7 @@ function DepartmentCard({
 // ==================== Page ====================
 
 export function AtlasPage() {
+  const { t } = useLocale()
   const [status, setStatus] = useState<AtlasStatus | null>(null)
   const [scorecard, setScorecard] = useState<AgentScoreItem[]>([])
   const [selectedDept, setSelectedDept] = useState<string | null>(null)
@@ -126,7 +132,6 @@ export function AtlasPage() {
     setRunning(true)
     try {
       await atlasApi.runAnalysis(deptId)
-      // Analysis runs async — results appear in Research channel
     } catch (err) {
       setError(String(err))
     } finally {
@@ -141,7 +146,7 @@ export function AtlasPage() {
   if (error) {
     return (
       <div className="flex-1 overflow-y-auto p-6">
-        <PageHeader title="Atlas Research" description="Multi-agent research team" />
+        <PageHeader title={t('atlas.title')} description={t('atlas.description_disabled')} />
         <p className="text-[13px] text-red mt-4">{error}</p>
       </div>
     )
@@ -150,13 +155,13 @@ export function AtlasPage() {
   return (
     <div className="flex-1 overflow-y-auto p-6">
       <PageHeader
-        title="Atlas Research"
-        description={status?.enabled ? 'Research team active' : 'Disabled — enable in atlas.json'}
+        title={t('atlas.title')}
+        description={status?.enabled ? t('atlas.description_active') : t('atlas.description_disabled')}
       />
 
       {/* Departments */}
       <section className="mt-6">
-        <h2 className="text-[13px] font-semibold text-text-muted uppercase tracking-wider mb-3">Departments</h2>
+        <h2 className="text-[13px] font-semibold text-text-muted uppercase tracking-wider mb-3">{t('atlas.departments')}</h2>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {status?.departments.map((dept) => (
             <DepartmentCard
@@ -168,7 +173,7 @@ export function AtlasPage() {
           ))}
         </div>
         {status?.departments.length === 0 && (
-          <p className="text-[13px] text-text-muted">No departments configured.</p>
+          <p className="text-[13px] text-text-muted">{t('atlas.no_departments')}</p>
         )}
       </section>
 
@@ -177,7 +182,7 @@ export function AtlasPage() {
         <section className="mt-8">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-[13px] font-semibold text-text-muted uppercase tracking-wider">
-              Scorecard — {selectedDept}
+              {t('atlas.scorecard')} — {selectedDept}
             </h2>
             <select
               value={selectedDept}

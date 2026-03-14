@@ -82,7 +82,7 @@ export class WebPlugin implements Plugin {
     app.route('/api/trading', createTradingRoutes(ctx))
     app.route('/api/dev', createDevRoutes(ctx.connectorCenter))
     app.route('/api/tools', createToolsRoutes(ctx.toolCenter))
-    app.route('/api/atlas', createAtlasRoutes({ pipeline: null, config: null }))
+    app.route('/api/atlas', createAtlasRoutes({ getPipeline: () => null, getConfig: () => null }))
 
     // ==================== Serve UI (Vite build output) ====================
     const uiRoot = resolve('dist/ui')

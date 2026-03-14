@@ -8,38 +8,48 @@
 import { Hono } from 'hono'
 import type { AtlasPipeline } from '../../../extension/atlas/pipeline.js'
 import type { AtlasConfig } from '../../../extension/atlas/types.js'
+import { loadAtlasConfig } from '../../../extension/atlas/config.js'
 
 export interface AtlasRoutesDeps {
-  pipeline: AtlasPipeline | null
-  config: AtlasConfig | null
+  getPipeline: () => AtlasPipeline | null
+  getConfig: () => AtlasConfig | null
 }
 
 export function createAtlasRoutes(deps: AtlasRoutesDeps) {
   const app = new Hono()
 
   /** GET /api/atlas/status — Atlas enabled status + department list */
-  app.get('/status', (c) => {
-    if (!deps.config) {
-      return c.json({ enabled: false, departments: [] })
+  app.get('/status', async (c) => {
+    // Try deps first, fall back to loading from disk
+    let config = deps.getConfig()
+    if (!config) {
+      try {
+        config = await loadAtlasConfig()
+      } catch {
+        return c.json({ enabled: false, departments: [] })
+      }
     }
+
+    const pipeline = deps.getPipeline()
     return c.json({
-      enabled: deps.config.enabled,
-      departments: deps.config.departments.map((d) => ({
+      enabled: config.enabled,
+      departments: config.departments.map((d) => ({
         id: d.id,
         name: d.name,
         enabled: d.enabled,
         timeframes: d.timeframes,
-        last_run: deps.pipeline?.getLastRunTimestamp(d.id) ?? null,
+        last_run: pipeline?.getLastRunTimestamp(d.id) ?? null,
       })),
     })
   })
 
   /** GET /api/atlas/scorecard/:department — Agent performance data */
   app.get('/scorecard/:department', async (c) => {
-    if (!deps.pipeline) return c.json({ error: 'Atlas not initialized' }, 503)
+    const pipeline = deps.getPipeline()
+    if (!pipeline) return c.json({ error: 'Atlas pipeline not initialized' }, 503)
     const departmentId = c.req.param('department')
     try {
-      const scorecard = deps.pipeline.getScorecard(departmentId)
+      const scorecard = pipeline.getScorecard(departmentId)
       await scorecard.load()
       return c.json({ agents: scorecard.getAllScores() })
     } catch (err) {
@@ -49,10 +59,11 @@ export function createAtlasRoutes(deps: AtlasRoutesDeps) {
 
   /** GET /api/atlas/knowledge/:department/stats — Knowledge graph stats */
   app.get('/knowledge/:department/stats', async (c) => {
-    if (!deps.pipeline) return c.json({ error: 'Atlas not initialized' }, 503)
+    const pipeline = deps.getPipeline()
+    if (!pipeline) return c.json({ error: 'Atlas pipeline not initialized' }, 503)
     const departmentId = c.req.param('department')
     try {
-      const kg = deps.pipeline.getKnowledgeGraph(departmentId)
+      const kg = pipeline.getKnowledgeGraph(departmentId)
       const stats = await kg.stats()
       return c.json(stats)
     } catch (err) {
@@ -62,12 +73,13 @@ export function createAtlasRoutes(deps: AtlasRoutesDeps) {
 
   /** POST /api/atlas/run — Trigger analysis (async, results stream via SSE) */
   app.post('/run', async (c) => {
-    if (!deps.pipeline) return c.json({ error: 'Atlas not initialized' }, 503)
+    const pipeline = deps.getPipeline()
+    if (!pipeline) return c.json({ error: 'Atlas pipeline not initialized' }, 503)
     const body = await c.req.json() as { department: string; focus?: string }
     if (!body.department) return c.json({ error: 'department required' }, 400)
 
     // Run async — results stream to research channel via callbacks
-    deps.pipeline.run({
+    pipeline.run({
       department: body.department,
       focus: body.focus,
     }).catch((err) => {

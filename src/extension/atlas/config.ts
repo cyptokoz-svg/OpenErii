@@ -1,0 +1,133 @@
+/**
+ * Atlas Config — Load and validate atlas configuration files
+ *
+ * Loads departments.json, per-department agents.json, and atlas.json.
+ * All validated with Zod schemas. Missing files fall back to defaults.
+ */
+
+import { readFile } from 'fs/promises'
+import { resolve } from 'path'
+import { z } from 'zod'
+import type { AtlasConfig, DepartmentConfig, AgentConfig } from './types.js'
+
+// ==================== Paths ====================
+
+const ATLAS_CONFIG_PATH = resolve('data/config/atlas.json')
+const ATLAS_DATA_DIR = resolve('data/atlas')
+
+// ==================== Zod Schemas ====================
+
+const DataSourceSchema = z.object({
+  provider: z.string(),
+  query: z.string(),
+  symbols: z.array(z.string()).optional(),
+  type: z.enum(['price', 'news', 'macro']).default('price'),
+})
+
+const AgentConfigSchema = z.object({
+  name: z.string(),
+  display_name: z.string(),
+  layer: z.enum(['L1', 'L2', 'L3', 'L4']),
+  model_tier: z.string().default('default'),
+  style: z.string().default(''),
+  prompt_file: z.string(),
+  knowledge_links: z.array(z.string()).default([]),
+  data_sources: z.array(DataSourceSchema).default([]),
+  rule_based: z.boolean().default(false),
+  chat_enabled: z.boolean().default(false),
+  enabled: z.boolean().default(true),
+})
+
+const DepartmentConfigSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  enabled: z.boolean().default(true),
+  layers: z.array(z.enum(['L1', 'L2', 'L3', 'L4'])).default(['L1', 'L2', 'L3', 'L4']),
+  agents_config: z.string(),
+  timeframes: z.array(z.string()).default(['15m', '4h', '1d']),
+})
+
+const AtlasConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  model_tiers: z.record(z.string(), z.string()).default({ default: 'haiku' }),
+  max_concurrency: z.number().int().min(1).default(5),
+  departments: z.array(DepartmentConfigSchema).default([]),
+})
+
+// ==================== Defaults ====================
+
+const DEFAULT_ATLAS_CONFIG: AtlasConfig = {
+  enabled: false,
+  model_tiers: { default: 'haiku' },
+  max_concurrency: 5,
+  departments: [],
+}
+
+// ==================== Loaders ====================
+
+/** Read and parse a JSON file, returning undefined on missing file. */
+async function readJsonFile<T>(path: string): Promise<T | undefined> {
+  try {
+    const raw = await readFile(path, 'utf-8')
+    return JSON.parse(raw) as T
+  } catch {
+    return undefined
+  }
+}
+
+/** Load main atlas.json config. */
+export async function loadAtlasConfig(): Promise<AtlasConfig> {
+  const raw = await readJsonFile<unknown>(ATLAS_CONFIG_PATH)
+  if (!raw) return DEFAULT_ATLAS_CONFIG
+  return AtlasConfigSchema.parse(raw)
+}
+
+/** Load agents.json for a specific department. */
+export async function loadDepartmentAgents(department: DepartmentConfig): Promise<AgentConfig[]> {
+  const agentsPath = resolve(ATLAS_DATA_DIR, department.id, department.agents_config)
+  const raw = await readJsonFile<{ agents: unknown[] }>(agentsPath)
+  if (!raw?.agents) return []
+
+  const agents: AgentConfig[] = []
+  for (const entry of raw.agents) {
+    try {
+      agents.push(AgentConfigSchema.parse(entry))
+    } catch (err) {
+      console.warn(`atlas: invalid agent config in ${department.id}:`, err)
+    }
+  }
+  return agents.filter((a) => a.enabled)
+}
+
+/** Load prompt file content for an agent. */
+export async function loadPrompt(departmentId: string, promptFile: string): Promise<string> {
+  const promptPath = resolve(ATLAS_DATA_DIR, departmentId, promptFile)
+  try {
+    return await readFile(promptPath, 'utf-8')
+  } catch {
+    console.warn(`atlas: prompt not found: ${promptPath}`)
+    return ''
+  }
+}
+
+/** Get all enabled departments. */
+export async function getEnabledDepartments(): Promise<DepartmentConfig[]> {
+  const config = await loadAtlasConfig()
+  if (!config.enabled) return []
+  return config.departments.filter((d) => d.enabled)
+}
+
+/** Resolve model name from tier. */
+export function resolveModel(config: AtlasConfig, tier: string): string {
+  return config.model_tiers[tier] ?? config.model_tiers['default'] ?? 'haiku'
+}
+
+/** Get department data directory path. */
+export function getDepartmentDataDir(departmentId: string): string {
+  return resolve(ATLAS_DATA_DIR, departmentId)
+}
+
+/** Get department knowledge vault path. */
+export function getKnowledgeVaultPath(departmentId: string): string {
+  return resolve(ATLAS_DATA_DIR, departmentId, 'knowledge')
+}

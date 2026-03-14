@@ -18,7 +18,7 @@ import type {
   PipelineCallbacks,
 } from './types.js'
 import { LAYERS } from './types.js'
-import { loadDepartmentAgents } from './config.js'
+import { loadDepartmentAgents, getKnowledgeVaultPath } from './config.js'
 import { AgentRunner, type LLMCallFn, type DataFetchFn } from './runner.js'
 import { synthesizeLayer } from './synthesizer.js'
 import { KnowledgeGraph } from './knowledge.js'
@@ -70,7 +70,6 @@ export class AtlasPipeline {
   getKnowledgeGraph(departmentId: string): KnowledgeGraph {
     let kg = this.knowledgeGraphs.get(departmentId)
     if (!kg) {
-      const { getKnowledgeVaultPath } = require('./config.js')
       kg = new KnowledgeGraph(getKnowledgeVaultPath(departmentId))
       this.knowledgeGraphs.set(departmentId, kg)
     }

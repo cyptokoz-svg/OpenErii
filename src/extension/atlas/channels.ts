@@ -11,6 +11,21 @@ import type { DepartmentConfig } from './types.js'
 import { loadDepartmentAgents } from './config.js'
 import type { AtlasConfig } from './types.js'
 
+/** Chinese labels for departments and agents */
+const DEPT_LABELS: Record<string, string> = {
+  commodity: '投研: 大宗商品',
+}
+
+const AGENT_LABELS: Record<string, string> = {
+  energy_desk: '能源分析',
+  precious_metals: '贵金属分析',
+  industrial_metals: '工业金属分析',
+  agriculture: '农产品分析',
+  soft_commodities: '软商品分析',
+  livestock: '畜牧业分析',
+  carbon_esg: '碳排放与ESG',
+}
+
 /** Channel ID conventions */
 export function deptChannelId(dept: string): string {
   return `atlas-${dept}`
@@ -39,10 +54,11 @@ export async function ensureAtlasChannels(config: AtlasConfig): Promise<string[]
     // Department research channel
     const deptId = deptChannelId(dept.id)
     if (!existingIds.has(deptId)) {
+      const deptLabel = DEPT_LABELS[dept.id] ?? `投研: ${dept.name}`
       const ch: WebChannel = {
         id: deptId,
-        label: `Research: ${capitalize(dept.name)}`,
-        systemPrompt: `You are the ${capitalize(dept.name)} research department coordinator. You summarize and discuss the latest research analysis from the team's agents. When users ask questions, provide context from recent agent analyses.`,
+        label: deptLabel,
+        systemPrompt: `你是${deptLabel}部门的协调员。你负责总结和讨论团队分析师的最新研究分析。用户提问时，提供最近分析的背景信息。用中文回答。`,
       }
       existing.push(ch)
       existingIds.add(deptId)
@@ -64,10 +80,11 @@ export async function ensureAtlasChannels(config: AtlasConfig): Promise<string[]
 
       const agentId = agentChannelId(dept.id, agent.name)
       if (!existingIds.has(agentId)) {
+        const agentLabel = AGENT_LABELS[agent.name] ?? agent.display_name ?? agent.name
         const ch: WebChannel = {
           id: agentId,
-          label: agent.display_name ?? agent.name,
-          systemPrompt: `You are ${agent.display_name ?? agent.name}, a specialized research analyst in the ${capitalize(dept.name)} department. Your role: ${agent.name}. Respond based on your analytical expertise. Layer: ${agent.layer}.`,
+          label: agentLabel,
+          systemPrompt: `你是${agentLabel}，${DEPT_LABELS[dept.id] ?? dept.name}部门的专业研究员。你的职责是：${agent.name}。根据你的分析专长回答问题。用中文回答。Layer: ${agent.layer}.`,
         }
         existing.push(ch)
         existingIds.add(agentId)

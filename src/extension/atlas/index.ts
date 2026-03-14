@@ -1,28 +1,25 @@
 /**
- * Atlas Research Extension — Entry point
+ * Atlas Research Extension — Public API
  *
- * Exports createAtlasTools() for registration in Alice's ToolCenter.
+ * Re-exports all public-facing modules for the multi-department
+ * research team engine.
  */
 
-export { createAtlasTools } from './adapter.js'
-export type { AtlasToolsDeps } from './adapter.js'
+// Core
+export { type Envelope, type AtlasConfig, type AtlasReport, type AgentConfig } from './types.js'
+export { parseAgentOutput, buildEnvelope } from './envelope.js'
+export { loadAtlasConfig, resolveModel, getKnowledgeVaultPath } from './config.js'
+
+// Engine
 export { AtlasPipeline } from './pipeline.js'
-export type { PipelineConfig } from './pipeline.js'
-export { DataBridge } from './data-bridge.js'
-export type { DataBridgeDeps } from './data-bridge.js'
+export { AgentRunner } from './runner.js'
+export { synthesizeLayer } from './synthesizer.js'
 export { KnowledgeGraph } from './knowledge.js'
 export { Scorecard } from './scorecard.js'
 export { AutoResearch } from './autoresearch.js'
-export { AgentRunner } from './runner.js'
-export { loadAtlasConfig, getEnabledDepartments } from './config.js'
-export type {
-  AtlasConfig,
-  AtlasReport,
-  AtlasRunOpts,
-  AgentConfig,
-  DepartmentConfig,
-  Envelope,
-  Layer,
-  Direction,
-  PipelineCallbacks,
-} from './types.js'
+export { DataBridge } from './data-bridge.js'
+
+// Alice integration
+export { createAtlasTools } from './adapter.js'
+export { bootstrapAtlas } from './bootstrap.js'
+export { ensureAtlasChannels, deptChannelId, agentChannelId } from './channels.js'

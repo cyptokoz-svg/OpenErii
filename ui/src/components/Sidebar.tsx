@@ -1,6 +1,7 @@
 import { type ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { type Page, ROUTES } from '../App'
+import { LanguageSwitcher } from './LanguageSwitcher'
 
 interface SidebarProps {
   sseConnected: boolean
@@ -118,6 +119,17 @@ const NAV_ITEMS: NavItem[] = [
         <path d="M10 17V13" /><path d="M10 10V6" /><path d="M8 13h4" /><path d="M8 10h4" />
         <path d="M15 17V11" /><path d="M15 8V4" /><path d="M13 11h4" /><path d="M13 8h4" />
         <path d="M20 17V14" /><path d="M20 11V8" /><path d="M18 14h4" /><path d="M18 11h4" />
+      </svg>
+    ),
+  },
+  {
+    page: 'atlas' as const,
+    label: 'Atlas Research',
+    icon: (active: boolean) => (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" />
+        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+        <path d="M2 12h20" />
       </svg>
     ),
   },
@@ -287,6 +299,9 @@ export function Sidebar({ sseConnected, open, onClose }: SidebarProps) {
               )}
             </span>
             <span>{sseConnected ? 'Connected' : 'Reconnecting...'}</span>
+          </div>
+          <div className="mt-2 flex justify-end">
+            <LanguageSwitcher />
           </div>
         </div>
       </aside>

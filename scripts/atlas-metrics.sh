@@ -59,7 +59,7 @@ fi
 # ==================== Health score ====================
 # Weighted composite: compilation(40) + type_safety(20) + no_long_functions(15) + tests(15) + no_todos(10)
 compile_score=0
-if [ $compile_errors -eq 0 ] && [ $total_lines -gt 0 ]; then compile_score=40; fi
+if [[ $compile_errors -eq 0 && $total_lines -gt 0 ]]; then compile_score=40; fi
 
 type_score=20
 if [ $total_lines -gt 0 ]; then

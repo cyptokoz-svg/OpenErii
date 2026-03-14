@@ -228,6 +228,21 @@ export class WebPlugin implements Plugin {
             }))
           }
         }
+
+        // Also push a concise conclusion to Alice's main channel
+        const mainText = [
+          `📋 投研报告 — ${report.department}`,
+          `${dirEmoji(report.direction)} 方向: ${report.direction}  信心: ${report.conviction}/10`,
+          '',
+          report.summary,
+          positions ? `\n持仓建议:\n${positions}` : '',
+          '',
+          '💡 详细分析请切换到 #投研: 大宗商品 频道查看',
+        ].filter(Boolean).join('\n')
+
+        pushToChannel('default', JSON.stringify({
+          type: 'message', kind: 'notification', text: mainText,
+        }))
       },
     }
 

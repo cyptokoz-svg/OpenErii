@@ -202,9 +202,12 @@ export class WebPlugin implements Plugin {
       },
     }
 
-    // LLM call — use agentCenter.ask()
+    // LLM call — direct generateText (no tools/agent loop = fast)
     const llmCall: LLMCallFn = async (prompt: string, _model: string): Promise<string> => {
-      const result = await ctx.agentCenter.ask(prompt)
+      const { generateText } = await import('ai')
+      const { createModelFromConfig } = await import('../../ai-providers/vercel-ai-sdk/model-factory.js')
+      const { model } = await createModelFromConfig()
+      const result = await generateText({ model, prompt })
       return result.text
     }
 

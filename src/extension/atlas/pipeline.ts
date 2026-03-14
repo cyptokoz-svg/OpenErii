@@ -23,6 +23,7 @@ import { AgentRunner, type LLMCallFn, type DataFetchFn } from './runner.js'
 import { synthesizeLayer } from './synthesizer.js'
 import { KnowledgeGraph } from './knowledge.js'
 import { Scorecard } from './scorecard.js'
+import { FreshnessTracker } from './freshness.js'
 
 // ==================== Types ====================
 
@@ -46,6 +47,7 @@ export class AtlasPipeline {
   // Per-department state
   private scorecards: Map<string, Scorecard> = new Map()
   private knowledgeGraphs: Map<string, KnowledgeGraph> = new Map()
+  private freshnessTrackers: Map<string, FreshnessTracker> = new Map()
   private lastRunTimestamps: Map<string, string> = new Map()
 
   constructor(config: PipelineConfig) {
@@ -76,14 +78,24 @@ export class AtlasPipeline {
     return kg
   }
 
+  /** Get or create freshness tracker for a department. */
+  getFreshnessTracker(departmentId: string): FreshnessTracker {
+    let ft = this.freshnessTrackers.get(departmentId)
+    if (!ft) {
+      ft = new FreshnessTracker(departmentId)
+      this.freshnessTrackers.set(departmentId, ft)
+    }
+    return ft
+  }
+
   // ==================== Main Run ====================
 
   async run(opts: AtlasRunOpts): Promise<AtlasReport> {
     const startTime = Date.now()
-    const { department, agents, kg, scorecard, weights, runner } = await this.preparePipeline(opts)
+    const { department, agents, kg, scorecard, weights, runner, freshness } = await this.preparePipeline(opts)
 
     const { layerResults, allEnvelopes, skippedAgents, totalCalls, skippedCalls } =
-      await this.executeLayers(agents, runner, weights, department.id, opts.skip_layers)
+      await this.executeLayers(agents, runner, weights, department.id, opts.skip_layers, freshness)
 
     const report = await this.buildReport(
       opts.department, layerResults, allEnvelopes, skippedAgents,
@@ -115,6 +127,9 @@ export class AtlasPipeline {
     await scorecard.load()
     const weights = scorecard.getAllWeights()
 
+    const freshness = this.getFreshnessTracker(department.id)
+    await freshness.init()
+
     const runner = new AgentRunner({
       atlasConfig: this.config,
       departmentId: department.id,
@@ -123,16 +138,27 @@ export class AtlasPipeline {
       dataFetch: this.dataFetch,
     })
 
-    return { department, agents, kg, scorecard, weights, runner }
+    return { department, agents, kg, scorecard, weights, runner, freshness }
   }
 
-  /** Execute L1→L4 in sequence, each layer's agents run concurrently (except L4). */
+  /**
+   * Execute L1→L4 with IO-overlapping prefetch.
+   *
+   * While L(N) agents are running LLM calls, we prefetch data for L(N+1)
+   * agents in parallel. This hides data-fetch latency behind LLM wait time.
+   *
+   * Flow:
+   *   prefetch L1 data → run L1 LLM (while prefetching L2 data)
+   *                     → run L2 LLM (while prefetching L3 data)
+   *                     → run L3 LLM → run L4 LLM
+   */
   private async executeLayers(
     agents: AgentConfig[],
     runner: AgentRunner,
     weights: Record<string, number>,
     departmentId: string,
     skipLayersList?: Layer[],
+    freshness?: FreshnessTracker,
   ) {
     const skipLayers = new Set(skipLayersList ?? [])
     const layerResults: Partial<Record<Layer, LayerSynthesis>> = {}
@@ -142,23 +168,87 @@ export class AtlasPipeline {
     let skippedCalls = 0
     const upstreamContext: LayerSynthesis[] = []
 
-    for (const layer of LAYERS) {
-      if (skipLayers.has(layer)) continue
-      const layerAgents = agents.filter((a) => a.layer === layer)
-      if (layerAgents.length === 0) continue
+    // Data cache: prefetched data stored here for runner to use
+    const dataCache = new Map<string, string>()
 
+    // Get active layers in order
+    const activeLayers = LAYERS.filter((l) => !skipLayers.has(l))
+    const layerAgentsMap = new Map<Layer, AgentConfig[]>()
+    for (const layer of activeLayers) {
+      const la = agents.filter((a) => a.layer === layer)
+      if (la.length > 0) layerAgentsMap.set(layer, la)
+    }
+    const layersToRun = activeLayers.filter((l) => layerAgentsMap.has(l))
+
+    // Prefetch data for a set of agents (non-blocking)
+    const prefetchData = async (layerAgents: AgentConfig[]): Promise<void> => {
+      await Promise.all(
+        layerAgents.map(async (agent) => {
+          const key = `${departmentId}:${agent.name}`
+          if (dataCache.has(key)) return
+          try {
+            const data = await this.dataFetch(agent, departmentId)
+            dataCache.set(key, data)
+          } catch (err) {
+            console.warn(`atlas: prefetch failed for ${agent.name}:`, err)
+            dataCache.set(key, `⚠️ Data prefetch error: ${err}`)
+          }
+        }),
+      )
+    }
+
+    // Create a data fetch function that reads from cache first
+    const cachedDataFetch: DataFetchFn = async (agent, deptId) => {
+      const key = `${deptId}:${agent.name}`
+      if (dataCache.has(key)) return dataCache.get(key)!
+      // Fallback to live fetch if not cached
+      return this.dataFetch(agent, deptId)
+    }
+
+    // Create a runner that uses cached data
+    const cachedRunner = new AgentRunner({
+      atlasConfig: this.config,
+      departmentId,
+      knowledgeGraph: this.getKnowledgeGraph(departmentId),
+      llmCall: this.llmCall,
+      dataFetch: cachedDataFetch,
+    })
+
+    // Prefetch first layer's data before starting
+    if (layersToRun.length > 0) {
+      const firstLayerAgents = layerAgentsMap.get(layersToRun[0])!
+      await prefetchData(firstLayerAgents)
+    }
+
+    for (let i = 0; i < layersToRun.length; i++) {
+      const layer = layersToRun[i]
+      const layerAgents = layerAgentsMap.get(layer)!
+
+      // Start prefetching NEXT layer's data while current layer runs LLM
+      let prefetchPromise: Promise<void> | undefined
+      if (i + 1 < layersToRun.length) {
+        const nextLayerAgents = layerAgentsMap.get(layersToRun[i + 1])!
+        prefetchPromise = prefetchData(nextLayerAgents)
+      }
+
+      // Run current layer (with envelope caching + L4 staged injection)
+      const skippedBefore = skippedAgents.length
       const envelopes = await this.runLayer(
-        layer, layerAgents, runner, weights, departmentId, upstreamContext, skippedAgents,
+        layer, layerAgents, cachedRunner, weights, departmentId, upstreamContext, skippedAgents, freshness,
       )
 
       totalCalls += layerAgents.length
-      skippedCalls += layerAgents.length - envelopes.length + skippedAgents.length
+      const newlySkipped = skippedAgents.length - skippedBefore
+      skippedCalls += newlySkipped
       allEnvelopes.push(...envelopes)
 
       const synthesis = synthesizeLayer(layer, envelopes)
       layerResults[layer] = synthesis
       upstreamContext.push(synthesis)
-      await this.callbacks.onLayerComplete?.(synthesis)
+      await this.callbacks.onLayerComplete?.(synthesis, departmentId)
+
+      // Ensure prefetch completed before moving to next layer
+      if (prefetchPromise) await prefetchPromise
     }
 
     return { layerResults, allEnvelopes, skippedAgents, totalCalls, skippedCalls }
@@ -226,6 +316,7 @@ export class AtlasPipeline {
     departmentId: string,
     upstreamContext: LayerSynthesis[],
     skippedAgents: string[],
+    freshness?: FreshnessTracker,
   ): Promise<Envelope[]> {
     const maxConcurrency = this.config.max_concurrency
     const envelopes: Envelope[] = []
@@ -241,25 +332,73 @@ export class AtlasPipeline {
       }
     }
 
-    // L4 runs sequentially (CRO → PM → Devil's Advocate → CIO)
+    /**
+     * L4 runs sequentially with STAGED CONTEXT INJECTION:
+     *   CRO runs with base context (regime + L3 signals)
+     *   PM  runs with base context + CRO output
+     *   Devil's Advocate runs with base context + CRO + PM output
+     *   CIO runs with base context + CRO + PM + Devil output
+     *
+     * Each subsequent agent sees all prior L4 outputs → better decisions.
+     */
     if (layer === 'L4') {
+      const l4Envelopes: Envelope[] = []
       for (const agent of toRun) {
         const weight = weights[agent.name] ?? 1.0
-        const envelope = await runner.run(agent, weight, upstreamContext)
+        // Build staged context: upstream (L1-L3) + all prior L4 envelopes
+        const stagedContext = [...upstreamContext]
+        if (l4Envelopes.length > 0) {
+          // Inject prior L4 outputs as a synthetic synthesis
+          const l4Prior: LayerSynthesis = {
+            layer: 'L4',
+            direction: l4Envelopes[l4Envelopes.length - 1].signal.direction,
+            conviction: l4Envelopes[l4Envelopes.length - 1].signal.conviction,
+            agreement_ratio: 100,
+            envelopes: l4Envelopes,
+            dissent: [],
+            summary: l4Envelopes.map((e) =>
+              `[${e.display_name}] ${e.reasoning.summary}`
+            ).join(' | '),
+          }
+          stagedContext.push(l4Prior)
+        }
+        const envelope = await runner.run(agent, weight, stagedContext)
+        l4Envelopes.push(envelope)
         envelopes.push(envelope)
-        await this.callbacks.onAgentComplete?.(agent, envelope)
+        // Cache L4 envelopes too
+        if (freshness) await freshness.saveEnvelope(agent.name, envelope)
+        await this.callbacks.onAgentComplete?.(agent, envelope, departmentId)
       }
       return envelopes
     }
 
-    // L1/L2/L3 run concurrently with concurrency limit
+    // L1/L2/L3 run concurrently with concurrency limit + envelope caching
     const chunks = chunkArray(toRun, maxConcurrency)
     for (const chunk of chunks) {
       const results = await Promise.all(
         chunk.map(async (agent) => {
           const weight = weights[agent.name] ?? 1.0
+
+          // Check freshness: can we serve cached envelope?
+          if (freshness) {
+            const needsRerun = freshness.shouldAgentRerun(
+              agent.name, agent.data_sources, {},
+            )
+            if (!needsRerun) {
+              const cached = await freshness.loadEnvelope(agent.name)
+              if (cached) {
+                await this.callbacks.onAgentComplete?.(agent, cached, departmentId)
+                return cached
+              }
+            }
+          }
+
           const envelope = await runner.run(agent, weight, upstreamContext)
-          await this.callbacks.onAgentComplete?.(agent, envelope)
+
+          // Cache the envelope for next run
+          if (freshness) await freshness.saveEnvelope(agent.name, envelope)
+
+          await this.callbacks.onAgentComplete?.(agent, envelope, departmentId)
           return envelope
         }),
       )

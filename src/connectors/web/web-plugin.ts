@@ -21,6 +21,10 @@ import { createAtlasRoutes } from './routes/atlas.js'
 import { loadAtlasConfig } from '../../extension/atlas/config.js'
 import { AtlasPipeline } from '../../extension/atlas/pipeline.js'
 import { ensureAtlasChannels, deptChannelId } from '../../extension/atlas/channels.js'
+import { AutoResearch } from '../../extension/atlas/autoresearch.js'
+import { createAtlasTools } from '../../extension/atlas/adapter.js'
+import { DataBridge, type DataBridgeDeps } from '../../extension/atlas/data-bridge.js'
+import type { NewsCollectorStore } from '../../extension/news-collector/store.js'
 import type { AtlasConfig, AgentConfig, Envelope, PipelineCallbacks } from '../../extension/atlas/types.js'
 import type { LLMCallFn } from '../../extension/atlas/runner.js'
 
@@ -38,6 +42,7 @@ export class WebPlugin implements Plugin {
   // Atlas state — initialized lazily after start()
   private atlasPipeline: AtlasPipeline | null = null
   private atlasConfig: AtlasConfig | null = null
+  private sessions = new Map<string, SessionStore>()
 
   constructor(private config: WebConfig) {}
 
@@ -46,17 +51,18 @@ export class WebPlugin implements Plugin {
     const subChannels = await readWebSubchannels()
 
     // Initialize sessions for the default channel and all sub-channels
-    const sessions = new Map<string, SessionStore>()
-
     const defaultSession = new SessionStore('web/default')
     await defaultSession.restore()
-    sessions.set('default', defaultSession)
+    this.sessions.set('default', defaultSession)
 
     for (const ch of subChannels) {
       const session = new SessionStore(`web/${ch.id}`)
       await session.restore()
-      sessions.set(ch.id, session)
+      this.sessions.set(ch.id, session)
     }
+
+    // Local alias for route handlers
+    const sessions = this.sessions
 
     // Initialize SSE map for known channels (entries are created lazily too)
     this.sseByChannel.set('default', new Map())
@@ -170,17 +176,20 @@ export class WebPlugin implements Plugin {
 
     // Pipeline callbacks — push agent analysis as chat messages to research channel
     const callbacks: PipelineCallbacks = {
-      onAgentComplete: (agent: AgentConfig, envelope: Envelope) => {
+      // Bug #9 fix: departmentId is now passed by pipeline, push only to correct channel
+      onAgentComplete: (agent: AgentConfig, envelope: Envelope, departmentId: string) => {
         const dir = envelope.signal.direction
         const conv = envelope.signal.conviction
         const summary = envelope.reasoning?.summary ?? ''
         const factors = (envelope.reasoning?.key_factors ?? []).map((f: string) => `  • ${f}`).join('\n')
         const caveats = envelope.reasoning?.caveats ?? ''
-        const positions = (envelope.signal.positions ?? []).map((p: any) => `  📌 ${p.asset}: ${p.direction} ${p.size_pct}%`).join('\n')
+        // Bug #6 fix: use p.ticker (not p.asset which doesn't exist on Position type)
+        const positions = (envelope.signal.positions ?? []).map((p: any) => `  📌 ${p.ticker}${p.name ? ` (${p.name})` : ''}: ${p.direction} ${p.size_pct}%`).join('\n')
 
         const text = [
           `${dirEmoji(dir)} **${agentName(agent)}** [${agent.layer}]`,
-          `方向: ${dir}  信心: ${conv}/10`,
+          // Bug #7 fix: conviction is 0-100, display as /100
+          `方向: ${dir}  信心: ${conv}/100`,
           '',
           summary,
           factors ? `\n关键因素:\n${factors}` : '',
@@ -188,51 +197,49 @@ export class WebPlugin implements Plugin {
           positions ? `\n建议持仓:\n${positions}` : '',
         ].filter(Boolean).join('\n')
 
-        for (const dept of this.atlasConfig!.departments) {
-          if (!dept.enabled) continue
-          pushToChannel(deptChannelId(dept.id), JSON.stringify({
-            type: 'message', kind: 'notification', text,
-          }))
-        }
+        // Bug #9 fix: only push to the specific department channel being analyzed
+        pushToChannel(deptChannelId(departmentId), JSON.stringify({
+          type: 'message', kind: 'notification', text,
+        }))
       },
-      onLayerComplete: (synthesis) => {
+      // Bug #9 fix: departmentId is now passed by pipeline
+      onLayerComplete: (synthesis, departmentId: string) => {
         const text = [
           `━━━ ${synthesis.layer} 层级综合 ━━━`,
-          `${dirEmoji(synthesis.direction)} 方向: ${synthesis.direction}  信心: ${synthesis.conviction}/10  一致性: ${Math.round(synthesis.agreement_ratio * 100)}%`,
+          // Bug #5 fix: agreement_ratio is already 0-100, don't multiply again
+          // Bug #7 fix: conviction is 0-100, display as /100
+          `${dirEmoji(synthesis.direction)} 方向: ${synthesis.direction}  信心: ${synthesis.conviction}/100  一致性: ${synthesis.agreement_ratio}%`,
           '',
           synthesis.summary,
         ].join('\n')
 
-        for (const dept of this.atlasConfig!.departments) {
-          if (!dept.enabled) continue
-          pushToChannel(deptChannelId(dept.id), JSON.stringify({
-            type: 'message', kind: 'notification', text,
-          }))
-        }
+        // Bug #9 fix: only push to the specific department channel
+        pushToChannel(deptChannelId(departmentId), JSON.stringify({
+          type: 'message', kind: 'notification', text,
+        }))
       },
       onReportComplete: (report) => {
-        const positions = (report.positions ?? []).map((p: any) => `  📌 ${p.asset}: ${p.direction} ${p.size_pct}%`).join('\n')
+        // Bug #6 fix: use p.ticker (not p.asset)
+        const positions = (report.positions ?? []).map((p: any) => `  📌 ${p.ticker}${p.name ? ` (${p.name})` : ''}: ${p.direction} ${p.size_pct}%`).join('\n')
         const text = [
           `🏁 ═══ 最终投资报告 ═══`,
-          `${dirEmoji(report.direction)} 方向: ${report.direction}  信心: ${report.conviction}/10`,
+          // Bug #7 fix: conviction is 0-100
+          `${dirEmoji(report.direction)} 方向: ${report.direction}  信心: ${report.conviction}/100`,
           '',
           report.summary,
           positions ? `\n持仓建议:\n${positions}` : '',
         ].filter(Boolean).join('\n')
 
-        for (const dept of this.atlasConfig!.departments) {
-          if (!dept.enabled) continue
-          if (dept.name === report.department || dept.id === report.department) {
-            pushToChannel(deptChannelId(dept.id), JSON.stringify({
-              type: 'message', kind: 'notification', text,
-            }))
-          }
-        }
+        // Push to the specific department channel
+        pushToChannel(deptChannelId(report.department), JSON.stringify({
+          type: 'message', kind: 'notification', text,
+        }))
 
         // Also push a concise conclusion to Alice's main channel
         const mainText = [
-          `📋 投研报告 — ${report.department}`,
-          `${dirEmoji(report.direction)} 方向: ${report.direction}  信心: ${report.conviction}/10`,
+          `📋 投研团队报告 — ${report.department}`,
+          // Bug #7 fix: conviction is 0-100
+          `${dirEmoji(report.direction)} 方向: ${report.direction}  信心: ${report.conviction}/100`,
           '',
           report.summary,
           positions ? `\n持仓建议:\n${positions}` : '',
@@ -243,6 +250,26 @@ export class WebPlugin implements Plugin {
         pushToChannel('default', JSON.stringify({
           type: 'message', kind: 'notification', text: mainText,
         }))
+
+        // Persist to Alice's default session so she knows about the report
+        const aliceSession = this.sessions.get('default')
+        if (aliceSession) {
+          aliceSession.appendAssistant(mainText, 'notification', {
+            source: 'atlas',
+            department: report.department,
+            direction: report.direction,
+            conviction: report.conviction,
+          }).catch(() => { /* best-effort */ })
+        }
+
+        // Also persist to the research channel session
+        const deptSession = this.sessions.get(deptChannelId(report.department))
+        if (deptSession) {
+          deptSession.appendAssistant(text, 'notification', {
+            source: 'atlas',
+            department: report.department,
+          }).catch(() => { /* best-effort */ })
+        }
       },
     }
 
@@ -255,13 +282,32 @@ export class WebPlugin implements Plugin {
       return result.text
     }
 
-    // Data fetch — simplified: return empty context (no opentypebb wiring for now)
-    const dataFetch = async (): Promise<string> => {
-      return '[No live data connected — configure opentypebb data sources]'
+    // Bug #4 fix: Wire DataBridge with newsStore (if available) instead of dummy string
+    const newsStore = ctx.extensions?.newsStore as NewsCollectorStore | undefined
+    const dataBridgeDeps: DataBridgeDeps = {
+      fetchPrice: async (_symbol: string, _interval: string) => {
+        // TODO: wire OpenBB equity/crypto clients for live price data
+        return []
+      },
+      fetchMacro: async (_provider: string, _query: string, _symbols: string[]) => {
+        // TODO: wire OpenBB macro data
+        return []
+      },
+      newsStore: newsStore!,
     }
 
-    // Should-run — always run for now
-    const shouldRunAgent = async (): Promise<boolean> => true
+    let dataFetch: (agent: AgentConfig, deptId: string) => Promise<string>
+    let shouldRunAgent: (agent: AgentConfig, deptId: string) => Promise<boolean>
+
+    if (newsStore) {
+      const dataBridge = new DataBridge(dataBridgeDeps)
+      dataFetch = (agent, deptId) => dataBridge.fetchForAgent(agent, deptId)
+      shouldRunAgent = (agent, deptId) => dataBridge.shouldRun(agent, deptId)
+    } else {
+      console.warn('atlas: newsStore not available via ctx.extensions, agents will receive no live data')
+      dataFetch = async () => ''
+      shouldRunAgent = async () => true
+    }
 
     this.atlasPipeline = new AtlasPipeline({
       atlasConfig: this.atlasConfig,
@@ -270,6 +316,28 @@ export class WebPlugin implements Plugin {
       shouldRunAgent,
       callbacks,
     })
+
+    // Bug #1-2 fix: Register Atlas tools with ToolCenter so Alice can trigger analysis via conversation/cron
+    const autoResearchers = new Map<string, AutoResearch>()
+    const atlasTools = createAtlasTools({
+      pipeline: this.atlasPipeline,
+      config: this.atlasConfig,
+      // Bug #3 fix: Create AutoResearch instances for self-evolution loop
+      getAutoResearch: (deptId: string) => {
+        let ar = autoResearchers.get(deptId)
+        if (!ar) {
+          ar = new AutoResearch(
+            deptId,
+            this.atlasConfig!,
+            this.atlasPipeline!.getScorecard(deptId),
+            llmCall,
+          )
+          autoResearchers.set(deptId, ar)
+        }
+        return ar
+      },
+    })
+    ctx.toolCenter.register(atlasTools, 'atlas')
 
     console.log(`atlas: initialized with ${this.atlasConfig.departments.filter(d => d.enabled).length} departments`)
   }

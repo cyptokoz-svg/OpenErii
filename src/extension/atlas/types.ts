@@ -200,7 +200,7 @@ export interface EvolutionEntry {
 // ==================== Pipeline Callbacks ====================
 
 export interface PipelineCallbacks {
-  onAgentComplete?: (agent: AgentConfig, envelope: Envelope) => void | Promise<void>
-  onLayerComplete?: (synthesis: LayerSynthesis) => void | Promise<void>
+  onAgentComplete?: (agent: AgentConfig, envelope: Envelope, departmentId: string) => void | Promise<void>
+  onLayerComplete?: (synthesis: LayerSynthesis, departmentId: string) => void | Promise<void>
   onReportComplete?: (report: AtlasReport) => void | Promise<void>
 }

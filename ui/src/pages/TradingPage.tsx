@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Section, Field, inputClass } from '../components/form'
 import { Toggle } from '../components/Toggle'
 import { GuardsSection, CRYPTO_GUARD_TYPES, SECURITIES_GUARD_TYPES } from '../components/guards'
@@ -6,6 +6,7 @@ import { SDKSelector, PLATFORM_TYPE_OPTIONS } from '../components/SDKSelector'
 import { ReconnectButton } from '../components/ReconnectButton'
 import { useTradingConfig } from '../hooks/useTradingConfig'
 import { PageHeader } from '../components/PageHeader'
+import { useLocale } from '../i18n'
 import type { PlatformConfig, CcxtPlatformConfig, AlpacaPlatformConfig, AccountConfig } from '../api/types'
 
 // ==================== Dialog state ====================
@@ -20,6 +21,7 @@ type DialogState =
 export function TradingPage() {
   const tc = useTradingConfig()
   const [dialog, setDialog] = useState<DialogState>(null)
+  const { t } = useLocale()
 
   // Close dialog if the selected account was deleted
   useEffect(() => {
@@ -28,13 +30,13 @@ export function TradingPage() {
     }
   }, [tc.accounts, dialog])
 
-  if (tc.loading) return <PageShell subtitle="Loading..." />
+  if (tc.loading) return <PageShell subtitle={t('trading.loading')} />
   if (tc.error) {
     return (
-      <PageShell subtitle="Failed to load trading configuration.">
+      <PageShell subtitle={t('trading.load_error')}>
         <p className="text-[13px] text-red">{tc.error}</p>
         <button onClick={tc.refresh} className="mt-2 px-3 py-1.5 text-[13px] font-medium rounded-md border border-border hover:bg-bg-tertiary transition-colors">
-          Retry
+          {t('trading.retry')}
         </button>
       </PageShell>
     )
@@ -56,7 +58,7 @@ export function TradingPage() {
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <PageHeader title="Trading" description="Configure your trading accounts." />
+      <PageHeader title={t('trading.title')} description={t('trading.description')} />
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-4 md:px-6 py-5">
@@ -71,7 +73,7 @@ export function TradingPage() {
             onClick={() => setDialog({ kind: 'add' })}
             className="text-[12px] text-text-muted hover:text-text transition-colors"
           >
-            + Add Account
+            {t('trading.add_account')}
           </button>
         </div>
       </div>
@@ -112,9 +114,10 @@ export function TradingPage() {
 // ==================== Page Shell ====================
 
 function PageShell({ subtitle, children }: { subtitle: string; children?: React.ReactNode }) {
+  const { t } = useLocale()
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <PageHeader title="Trading" description={subtitle} />
+      <PageHeader title={t('trading.title')} description={subtitle} />
       <div className="flex-1 overflow-y-auto px-4 md:px-6 py-5">{children}</div>
     </div>
   )
@@ -155,6 +158,7 @@ function AccountsTable({ accounts, platforms, onSelect }: {
   platforms: PlatformConfig[]
   onSelect: (id: string) => void
 }) {
+  const { t } = useLocale()
   const getPlatform = (platformId: string) => platforms.find((p) => p.id === platformId)
 
   const getConnectionLabel = (account: AccountConfig) => {
@@ -172,8 +176,8 @@ function AccountsTable({ accounts, platforms, onSelect }: {
   if (accounts.length === 0) {
     return (
       <div className="rounded-lg border border-border p-8 text-center">
-        <p className="text-[13px] text-text-muted">No accounts configured.</p>
-        <p className="text-[11px] text-text-muted/60 mt-1">Click "+ Add Account" to connect your first trading account.</p>
+        <p className="text-[13px] text-text-muted">{t('trading.no_accounts')}</p>
+        <p className="text-[11px] text-text-muted/60 mt-1">{t('trading.no_accounts_desc')}</p>
       </div>
     )
   }
@@ -184,9 +188,9 @@ function AccountsTable({ accounts, platforms, onSelect }: {
         <thead>
           <tr className="bg-bg-secondary/50 text-text-muted text-[11px] uppercase tracking-wider">
             <th className="text-left pl-4 pr-2 py-2.5 font-medium w-[40px]"></th>
-            <th className="text-left px-3 py-2.5 font-medium">Account</th>
-            <th className="text-left px-3 py-2.5 font-medium">Connection</th>
-            <th className="text-left px-3 py-2.5 font-medium">Guards</th>
+            <th className="text-left px-3 py-2.5 font-medium">{t('trading.account')}</th>
+            <th className="text-left px-3 py-2.5 font-medium">{t('trading.connection')}</th>
+            <th className="text-left px-3 py-2.5 font-medium">{t('trading.guards')}</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
@@ -228,6 +232,16 @@ function CreateWizard({ existingAccountIds, onSave, onClose }: {
   onSave: (platform: PlatformConfig, account: AccountConfig) => Promise<void>
   onClose: () => void
 }) {
+  const { t } = useLocale()
+
+  const platformOptions = useMemo(() => PLATFORM_TYPE_OPTIONS.map((opt) => ({
+    ...opt,
+    ...({
+      ccxt: { name: t('trading.ccxt_name'), description: t('trading.ccxt_desc') },
+      alpaca: { name: t('trading.alpaca_name'), description: t('trading.alpaca_desc') },
+    }[opt.id] ?? {}),
+  })), [t])
+
   const [step, setStep] = useState(1)
   const [type, setType] = useState<'ccxt' | 'alpaca' | null>(null)
 
@@ -288,42 +302,42 @@ function CreateWizard({ existingAccountIds, onSave, onClose }: {
     <Dialog onClose={onClose}>
       {/* Header */}
       <div className="shrink-0 flex items-center justify-between px-5 py-4 border-b border-border">
-        <h3 className="text-[14px] font-semibold text-text">New Account</h3>
-        <span className="text-[11px] text-text-muted">Step {step}/3</span>
+        <h3 className="text-[14px] font-semibold text-text">{t('trading.new_account')}</h3>
+        <span className="text-[11px] text-text-muted">{t('trading.step')} {step}/3</span>
       </div>
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto px-5 py-5">
         {step === 1 && (
           <div className="space-y-4">
-            <p className="text-[13px] text-text-muted">Choose your platform</p>
-            <SDKSelector options={PLATFORM_TYPE_OPTIONS} selected="" onSelect={handleSelectType} />
+            <p className="text-[13px] text-text-muted">{t('trading.choose_platform')}</p>
+            <SDKSelector options={platformOptions} selected="" onSelect={handleSelectType} />
           </div>
         )}
 
         {step === 2 && type === 'ccxt' && (
           <div className="space-y-3">
-            <p className="text-[13px] text-text-muted mb-4">Configure your connection</p>
-            <Field label="Account ID">
+            <p className="text-[13px] text-text-muted mb-4">{t('trading.configure_connection')}</p>
+            <Field label={t('trading.account_id')}>
               <input className={inputClass} value={id} onChange={(e) => setId(e.target.value.trim())} placeholder={defaultId} />
             </Field>
-            <Field label="Exchange">
+            <Field label={t('trading.exchange')}>
               <input className={inputClass} value={exchange} onChange={(e) => setExchange(e.target.value.trim())} placeholder="binance" />
             </Field>
-            <Field label="Market Type">
+            <Field label={t('trading.market_type')}>
               <select className={inputClass} value={marketType} onChange={(e) => setMarketType(e.target.value as 'swap' | 'spot')}>
-                <option value="swap">Perpetual Swap</option>
-                <option value="spot">Spot</option>
+                <option value="swap">{t('trading.perpetual_swap')}</option>
+                <option value="spot">{t('trading.spot')}</option>
               </select>
             </Field>
             <div className="space-y-2 pt-1">
               <label className="flex items-center gap-2.5 cursor-pointer">
                 <Toggle checked={sandbox} onChange={setSandbox} />
-                <span className="text-[13px] text-text">Sandbox Mode</span>
+                <span className="text-[13px] text-text">{t('trading.sandbox_mode')}</span>
               </label>
               <label className="flex items-center gap-2.5 cursor-pointer">
                 <Toggle checked={demoTrading} onChange={setDemoTrading} />
-                <span className="text-[13px] text-text">Demo Trading</span>
+                <span className="text-[13px] text-text">{t('trading.demo_trading')}</span>
               </label>
             </div>
             {error && <p className="text-[12px] text-red">{error}</p>}
@@ -332,31 +346,31 @@ function CreateWizard({ existingAccountIds, onSave, onClose }: {
 
         {step === 2 && type === 'alpaca' && (
           <div className="space-y-3">
-            <p className="text-[13px] text-text-muted mb-4">Configure your connection</p>
-            <Field label="Account ID">
+            <p className="text-[13px] text-text-muted mb-4">{t('trading.configure_connection')}</p>
+            <Field label={t('trading.account_id')}>
               <input className={inputClass} value={id} onChange={(e) => setId(e.target.value.trim())} placeholder={defaultId} />
             </Field>
             <label className="flex items-center gap-2.5 cursor-pointer">
               <Toggle checked={paper} onChange={setPaper} />
-              <span className="text-[13px] text-text">Paper Trading</span>
+              <span className="text-[13px] text-text">{t('trading.paper_trading')}</span>
             </label>
-            <p className="text-[11px] text-text-muted/60">When enabled, orders are routed to Alpaca's paper trading environment.</p>
+            <p className="text-[11px] text-text-muted/60">{t('trading.paper_desc')}</p>
             {error && <p className="text-[12px] text-red">{error}</p>}
           </div>
         )}
 
         {step === 3 && (
           <div className="space-y-3">
-            <p className="text-[13px] text-text-muted mb-4">API Credentials</p>
-            <Field label="API Key">
-              <input className={inputClass} type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="Optional — can be added later" />
+            <p className="text-[13px] text-text-muted mb-4">{t('trading.api_credentials')}</p>
+            <Field label={t('trading.api_key')}>
+              <input className={inputClass} type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={t('trading.optional_later')} />
             </Field>
-            <Field label={type === 'alpaca' ? 'Secret Key' : 'API Secret'}>
-              <input className={inputClass} type="password" value={apiSecret} onChange={(e) => setApiSecret(e.target.value)} placeholder="Optional — can be added later" />
+            <Field label={type === 'alpaca' ? t('trading.secret_key') : t('trading.api_secret')}>
+              <input className={inputClass} type="password" value={apiSecret} onChange={(e) => setApiSecret(e.target.value)} placeholder={t('trading.optional_later')} />
             </Field>
             {type === 'ccxt' && (
-              <Field label="Password">
-                <input className={inputClass} type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Required by some exchanges (e.g. OKX)" />
+              <Field label={t('trading.password')}>
+                <input className={inputClass} type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t('trading.password_placeholder')} />
               </Field>
             )}
             {error && <p className="text-[12px] text-red">{error}</p>}
@@ -368,22 +382,22 @@ function CreateWizard({ existingAccountIds, onSave, onClose }: {
       <div className="shrink-0 flex items-center justify-end gap-3 px-5 py-4 border-t border-border">
         {step === 1 && (
           <button onClick={onClose} className="px-3 py-1.5 text-[13px] font-medium rounded-md border border-border hover:bg-bg-tertiary transition-colors">
-            Cancel
+            {t('trading.cancel')}
           </button>
         )}
         {step > 1 && (
           <button onClick={() => { setStep(step - 1); setError('') }} className="px-3 py-1.5 text-[13px] font-medium rounded-md border border-border hover:bg-bg-tertiary transition-colors">
-            Back
+            {t('trading.back')}
           </button>
         )}
         {step === 2 && (
           <button onClick={handleNext} className="px-4 py-1.5 text-[13px] font-medium rounded-md bg-accent text-white hover:bg-accent/90 transition-colors">
-            Next
+            {t('trading.next')}
           </button>
         )}
         {step === 3 && (
           <button onClick={handleCreate} disabled={saving} className="px-4 py-1.5 text-[13px] font-medium rounded-md bg-accent text-white hover:bg-accent/90 disabled:opacity-50 transition-colors">
-            {saving ? 'Creating...' : 'Create'}
+            {saving ? t('trading.creating') : t('trading.create')}
           </button>
         )}
       </div>
@@ -401,6 +415,7 @@ function EditDialog({ account, platform, onSaveAccount, onSavePlatform, onDelete
   onDelete: () => Promise<void>
   onClose: () => void
 }) {
+  const { t } = useLocale()
   const [accountDraft, setAccountDraft] = useState(account)
   const [platformDraft, setPlatformDraft] = useState(platform)
   const [saving, setSaving] = useState(false)
@@ -431,7 +446,7 @@ function EditDialog({ account, platform, onSaveAccount, onSavePlatform, onDelete
       if (JSON.stringify(accountDraft) !== JSON.stringify(account)) {
         await onSaveAccount(accountDraft)
       }
-      setMsg('Saved')
+      setMsg(t('trading.saved'))
       setTimeout(() => setMsg(''), 2000)
     } catch (err) {
       setMsg(err instanceof Error ? err.message : 'Save failed')
@@ -457,9 +472,9 @@ function EditDialog({ account, platform, onSaveAccount, onSavePlatform, onDelete
       {/* Body */}
       <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
         {/* Connection */}
-        <Section title="Connection">
+        <Section title={t('trading.connection')}>
           <div className="mb-3">
-            <span className="text-[12px] text-text-muted">Type</span>
+            <span className="text-[12px] text-text-muted">{t('trading.type')}</span>
             <span className="ml-2 text-[12px] font-medium text-text">
               {platform.type === 'ccxt' ? 'CCXT' : 'Alpaca'}
             </span>
@@ -472,16 +487,16 @@ function EditDialog({ account, platform, onSaveAccount, onSavePlatform, onDelete
         </Section>
 
         {/* Credentials */}
-        <Section title="Credentials">
-          <Field label="API Key">
-            <input className={inputClass} type="password" value={accountDraft.apiKey || ''} onChange={(e) => patchAccount('apiKey', e.target.value)} placeholder="Not configured" />
+        <Section title={t('trading.credentials')}>
+          <Field label={t('trading.api_key')}>
+            <input className={inputClass} type="password" value={accountDraft.apiKey || ''} onChange={(e) => patchAccount('apiKey', e.target.value)} placeholder={t('trading.not_configured')} />
           </Field>
-          <Field label={platform.type === 'alpaca' ? 'Secret Key' : 'API Secret'}>
-            <input className={inputClass} type="password" value={accountDraft.apiSecret || ''} onChange={(e) => patchAccount('apiSecret', e.target.value)} placeholder="Not configured" />
+          <Field label={platform.type === 'alpaca' ? t('trading.secret_key') : t('trading.api_secret')}>
+            <input className={inputClass} type="password" value={accountDraft.apiSecret || ''} onChange={(e) => patchAccount('apiSecret', e.target.value)} placeholder={t('trading.not_configured')} />
           </Field>
           {platform.type === 'ccxt' && (
-            <Field label="Password (optional)">
-              <input className={inputClass} type="password" value={accountDraft.password || ''} onChange={(e) => patchAccount('password', e.target.value)} placeholder="Required by some exchanges (e.g. OKX)" />
+            <Field label={t('trading.password_optional')}>
+              <input className={inputClass} type="password" value={accountDraft.password || ''} onChange={(e) => patchAccount('password', e.target.value)} placeholder={t('trading.password_placeholder')} />
             </Field>
           )}
         </Section>
@@ -499,14 +514,14 @@ function EditDialog({ account, platform, onSaveAccount, onSavePlatform, onDelete
             >
               <polyline points="9 18 15 12 9 6" />
             </svg>
-            Guards ({accountDraft.guards.length})
+            {t('trading.guards')} ({accountDraft.guards.length})
           </button>
           {guardsOpen && (
             <div className="mt-3">
               <GuardsSection
                 guards={accountDraft.guards}
                 guardTypes={guardTypes}
-                description="Guards validate operations before execution. Order matters."
+                description={t('trading.guards_desc')}
                 onChange={(guards) => patchAccount('guards', guards)}
                 onChangeImmediate={(guards) => patchAccount('guards', guards)}
               />
@@ -516,7 +531,7 @@ function EditDialog({ account, platform, onSaveAccount, onSavePlatform, onDelete
 
         {/* Delete */}
         <div className="border-t border-border pt-3">
-          <DeleteButton label="Delete Account" onConfirm={onDelete} />
+          <DeleteButton label={t('trading.delete_account')} onConfirm={onDelete} />
         </div>
       </div>
 
@@ -528,7 +543,7 @@ function EditDialog({ account, platform, onSaveAccount, onSavePlatform, onDelete
             disabled={saving}
             className="px-4 py-1.5 text-[13px] font-medium rounded-md bg-accent text-white hover:bg-accent/90 disabled:opacity-50 transition-colors"
           >
-            {saving ? 'Saving...' : 'Save'}
+            {saving ? t('trading.saving') : t('trading.save')}
           </button>
         )}
         {msg && <span className="text-[12px] text-text-muted">{msg}</span>}
@@ -545,25 +560,26 @@ function CcxtConnectionFields({ draft, onPatch }: {
   draft: CcxtPlatformConfig
   onPatch: (field: string, value: unknown) => void
 }) {
+  const { t } = useLocale()
   return (
     <>
-      <Field label="Exchange">
+      <Field label={t('trading.exchange')}>
         <input className={inputClass} value={draft.exchange} onChange={(e) => onPatch('exchange', e.target.value.trim())} placeholder="binance" />
       </Field>
-      <Field label="Market Type">
+      <Field label={t('trading.market_type')}>
         <select className={inputClass} value={draft.defaultMarketType} onChange={(e) => onPatch('defaultMarketType', e.target.value)}>
-          <option value="swap">Perpetual Swap</option>
-          <option value="spot">Spot</option>
+          <option value="swap">{t('trading.perpetual_swap')}</option>
+          <option value="spot">{t('trading.spot')}</option>
         </select>
       </Field>
       <div className="space-y-2">
         <label className="flex items-center gap-2.5 cursor-pointer">
           <Toggle checked={draft.sandbox} onChange={(v) => onPatch('sandbox', v)} />
-          <span className="text-[13px] text-text">Sandbox Mode</span>
+          <span className="text-[13px] text-text">{t('trading.sandbox_mode')}</span>
         </label>
         <label className="flex items-center gap-2.5 cursor-pointer">
           <Toggle checked={draft.demoTrading} onChange={(v) => onPatch('demoTrading', v)} />
-          <span className="text-[13px] text-text">Demo Trading</span>
+          <span className="text-[13px] text-text">{t('trading.demo_trading')}</span>
         </label>
       </div>
     </>
@@ -574,13 +590,14 @@ function AlpacaConnectionFields({ draft, onPatch }: {
   draft: AlpacaPlatformConfig
   onPatch: (field: string, value: unknown) => void
 }) {
+  const { t } = useLocale()
   return (
     <>
       <label className="flex items-center gap-2.5 cursor-pointer">
         <Toggle checked={draft.paper} onChange={(v) => onPatch('paper', v)} />
-        <span className="text-[13px] text-text">Paper Trading</span>
+        <span className="text-[13px] text-text">{t('trading.paper_trading')}</span>
       </label>
-      <p className="text-[11px] text-text-muted/60 mt-1">When enabled, orders are routed to Alpaca's paper trading environment.</p>
+      <p className="text-[11px] text-text-muted/60 mt-1">{t('trading.paper_desc')}</p>
     </>
   )
 }
@@ -588,16 +605,17 @@ function AlpacaConnectionFields({ draft, onPatch }: {
 // ==================== Delete Button ====================
 
 function DeleteButton({ label, onConfirm }: { label: string; onConfirm: () => void }) {
+  const { t } = useLocale()
   const [confirming, setConfirming] = useState(false)
 
   if (confirming) {
     return (
       <div className="flex items-center gap-2">
         <button onClick={() => { onConfirm(); setConfirming(false) }} className="text-[11px] text-red hover:text-red/80 font-medium transition-colors">
-          Confirm
+          {t('trading.confirm')}
         </button>
         <button onClick={() => setConfirming(false)} className="text-[11px] text-text-muted hover:text-text transition-colors">
-          Cancel
+          {t('trading.cancel')}
         </button>
       </div>
     )

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { api } from '../api'
 import type { ChannelListItem } from '../api/channels'
 import type { ToolInfo } from '../api/tools'
+import { useLocale } from '../i18n'
 
 interface ChannelConfigModalProps {
   channel: ChannelListItem
@@ -10,6 +11,7 @@ interface ChannelConfigModalProps {
 }
 
 export function ChannelConfigModal({ channel, onClose, onSaved }: ChannelConfigModalProps) {
+  const { t } = useLocale()
   const [label, setLabel] = useState(channel.label)
   const [systemPrompt, setSystemPrompt] = useState(channel.systemPrompt ?? '')
   const [provider, setProvider] = useState(channel.provider ?? '')
@@ -67,7 +69,7 @@ export function ChannelConfigModal({ channel, onClose, onSaved }: ChannelConfigM
       })
       onSaved(updated)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save')
+      setError(err instanceof Error ? err.message : t('channel.save_failed'))
     } finally {
       setSaving(false)
     }
@@ -83,8 +85,8 @@ export function ChannelConfigModal({ channel, onClose, onSaved }: ChannelConfigM
   }
 
   // Group tools by group name
-  const toolGroups = tools.reduce<Record<string, ToolInfo[]>>((acc, t) => {
-    ;(acc[t.group] ??= []).push(t)
+  const toolGroups = tools.reduce<Record<string, ToolInfo[]>>((acc, tool) => {
+    ;(acc[tool.group] ??= []).push(tool)
     return acc
   }, {})
 
@@ -116,7 +118,7 @@ export function ChannelConfigModal({ channel, onClose, onSaved }: ChannelConfigM
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
           {/* Label */}
           <div>
-            <label className="block text-xs font-medium text-text-muted mb-1">Label</label>
+            <label className="block text-xs font-medium text-text-muted mb-1">{t('channel.label')}</label>
             <input
               type="text"
               value={label}
@@ -127,11 +129,11 @@ export function ChannelConfigModal({ channel, onClose, onSaved }: ChannelConfigM
 
           {/* System Prompt */}
           <div>
-            <label className="block text-xs font-medium text-text-muted mb-1">System Prompt</label>
+            <label className="block text-xs font-medium text-text-muted mb-1">{t('channel.system_prompt')}</label>
             <textarea
               value={systemPrompt}
               onChange={(e) => setSystemPrompt(e.target.value)}
-              placeholder="Custom instructions for this channel..."
+              placeholder={t('channel.system_prompt_placeholder')}
               rows={4}
               className={`${inputClass} resize-y`}
             />
@@ -139,13 +141,13 @@ export function ChannelConfigModal({ channel, onClose, onSaved }: ChannelConfigM
 
           {/* AI Backend */}
           <div>
-            <label className="block text-xs font-medium text-text-muted mb-1">AI Backend</label>
+            <label className="block text-xs font-medium text-text-muted mb-1">{t('channel.ai_backend')}</label>
             <select
               value={provider}
               onChange={(e) => setProvider(e.target.value)}
               className={inputClass}
             >
-              <option value="">Default (global)</option>
+              <option value="">{t('channel.default_global')}</option>
               <option value="vercel-ai-sdk">Vercel AI SDK</option>
               <option value="claude-code">Claude Code</option>
               <option value="agent-sdk">Agent SDK</option>
@@ -155,24 +157,24 @@ export function ChannelConfigModal({ channel, onClose, onSaved }: ChannelConfigM
           {/* Vercel AI SDK config — only when provider is vercel-ai-sdk */}
           {showVercelConfig && (
             <div className="rounded-lg border border-border/50 bg-bg-secondary/30 p-3 space-y-3">
-              <p className="text-xs font-medium text-text-muted">Vercel AI SDK Model Config</p>
+              <p className="text-xs font-medium text-text-muted">{t('channel.vercel_config')}</p>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-text-muted/70 mb-1">LLM Provider</label>
+                  <label className="block text-xs text-text-muted/70 mb-1">{t('channel.llm_provider')}</label>
                   <select
                     value={vModelProvider}
                     onChange={(e) => setVModelProvider(e.target.value)}
                     className={inputClass}
                   >
-                    <option value="">Select...</option>
+                    <option value="">{t('channel.select')}</option>
                     <option value="anthropic">Anthropic</option>
                     <option value="openai">OpenAI</option>
                     <option value="google">Google</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-text-muted/70 mb-1">Model</label>
+                  <label className="block text-xs text-text-muted/70 mb-1">{t('ai.model')}</label>
                   <input
                     type="text"
                     value={vModel}
@@ -184,7 +186,7 @@ export function ChannelConfigModal({ channel, onClose, onSaved }: ChannelConfigM
               </div>
 
               <div>
-                <label className="block text-xs text-text-muted/70 mb-1">Base URL <span className="text-text-muted/40">(optional)</span></label>
+                <label className="block text-xs text-text-muted/70 mb-1">{t('channel.base_url')} <span className="text-text-muted/40">({t('channel.optional')})</span></label>
                 <input
                   type="text"
                   value={vBaseUrl}
@@ -200,7 +202,7 @@ export function ChannelConfigModal({ channel, onClose, onSaved }: ChannelConfigM
               </div>
 
               <div>
-                <label className="block text-xs text-text-muted/70 mb-1">API Key <span className="text-text-muted/40">(optional, overrides global)</span></label>
+                <label className="block text-xs text-text-muted/70 mb-1">{t('trading.api_key')} <span className="text-text-muted/40">({t('channel.optional_override')})</span></label>
                 <input
                   type="password"
                   value={vApiKey}
@@ -215,10 +217,10 @@ export function ChannelConfigModal({ channel, onClose, onSaved }: ChannelConfigM
           {/* Agent SDK config — only when provider is agent-sdk */}
           {showAgentSdkConfig && (
             <div className="rounded-lg border border-border/50 bg-bg-secondary/30 p-3 space-y-3">
-              <p className="text-xs font-medium text-text-muted">Agent SDK Override</p>
+              <p className="text-xs font-medium text-text-muted">{t('channel.agent_sdk_override')}</p>
 
               <div>
-                <label className="block text-xs text-text-muted/70 mb-1">Model</label>
+                <label className="block text-xs text-text-muted/70 mb-1">{t('ai.model')}</label>
                 <input
                   type="text"
                   value={aModel}
@@ -229,18 +231,18 @@ export function ChannelConfigModal({ channel, onClose, onSaved }: ChannelConfigM
               </div>
 
               <div>
-                <label className="block text-xs text-text-muted/70 mb-1">Base URL <span className="text-text-muted/40">(optional)</span></label>
+                <label className="block text-xs text-text-muted/70 mb-1">{t('channel.base_url')} <span className="text-text-muted/40">({t('channel.optional')})</span></label>
                 <input
                   type="text"
                   value={aBaseUrl}
                   onChange={(e) => setABaseUrl(e.target.value)}
-                  placeholder="Leave empty for default"
+                  placeholder={t('channel.leave_empty')}
                   className={inputClass}
                 />
               </div>
 
               <div>
-                <label className="block text-xs text-text-muted/70 mb-1">API Key <span className="text-text-muted/40">(optional, overrides global)</span></label>
+                <label className="block text-xs text-text-muted/70 mb-1">{t('trading.api_key')} <span className="text-text-muted/40">({t('channel.optional_override')})</span></label>
                 <input
                   type="password"
                   value={aApiKey}
@@ -255,33 +257,33 @@ export function ChannelConfigModal({ channel, onClose, onSaved }: ChannelConfigM
           {/* Disabled Tools */}
           <div>
             <label className="block text-xs font-medium text-text-muted mb-2">
-              Disabled Tools
+              {t('channel.disabled_tools')}
               {disabledTools.size > 0 && (
-                <span className="ml-2 text-text-muted/60">({disabledTools.size} disabled)</span>
+                <span className="ml-2 text-text-muted/60">({disabledTools.size} {t('channel.disabled_count')})</span>
               )}
             </label>
             {tools.length === 0 ? (
-              <p className="text-xs text-text-muted">Loading tools...</p>
+              <p className="text-xs text-text-muted">{t('channel.loading_tools')}</p>
             ) : (
               <div className="space-y-3 max-h-48 overflow-y-auto">
                 {Object.entries(toolGroups).map(([group, groupTools]) => (
                   <div key={group}>
                     <p className="text-xs font-medium text-text-muted/70 mb-1">{group}</p>
                     <div className="flex flex-wrap gap-1.5">
-                      {groupTools.map((t) => {
-                        const isDisabled = disabledTools.has(t.name)
+                      {groupTools.map((tool) => {
+                        const isDisabled = disabledTools.has(tool.name)
                         return (
                           <button
-                            key={t.name}
-                            onClick={() => toggleTool(t.name)}
-                            title={t.description}
+                            key={tool.name}
+                            onClick={() => toggleTool(tool.name)}
+                            title={tool.description}
                             className={`text-xs px-2 py-1 rounded-md border transition-colors ${
                               isDisabled
                                 ? 'border-red-400/30 bg-red-400/10 text-red-400 line-through'
                                 : 'border-border bg-bg-secondary text-text hover:border-accent/50'
                             }`}
                           >
-                            {t.name}
+                            {tool.name}
                           </button>
                         )
                       })}
@@ -301,14 +303,14 @@ export function ChannelConfigModal({ channel, onClose, onSaved }: ChannelConfigM
               onClick={onClose}
               className="text-sm px-3 py-1.5 rounded-lg text-text-muted hover:text-text transition-colors"
             >
-              Cancel
+              {t('trading.cancel')}
             </button>
             <button
               onClick={handleSave}
               disabled={saving}
               className="text-sm px-4 py-1.5 rounded-lg bg-accent text-white hover:bg-accent/80 transition-colors disabled:opacity-50"
             >
-              {saving ? 'Saving...' : 'Save'}
+              {saving ? t('trading.saving') : t('trading.save')}
             </button>
           </div>
         </div>

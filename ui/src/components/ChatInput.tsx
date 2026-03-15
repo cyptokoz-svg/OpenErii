@@ -1,4 +1,5 @@
 import { useRef, useCallback, useState, type KeyboardEvent, type ChangeEvent } from 'react'
+import { useLocale } from '../i18n'
 
 interface ChatInputProps {
   disabled: boolean
@@ -6,6 +7,7 @@ interface ChatInputProps {
 }
 
 export function ChatInput({ disabled, onSend }: ChatInputProps) {
+  const { t } = useLocale()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [hasText, setHasText] = useState(false)
 
@@ -39,12 +41,12 @@ export function ChatInput({ disabled, onSend }: ChatInputProps) {
 
   return (
     <div className="px-4 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))] shrink-0">
-      <div className="flex items-end gap-3 bg-bg-secondary border border-border rounded-2xl px-4 py-2.5 max-w-[800px] mx-auto transition-all duration-200 focus-within:border-accent/60 focus-within:shadow-[0_0_0_1px_rgba(88,166,255,0.15)] shadow-sm">
+      <div className="flex items-end gap-3 bg-bg-secondary border border-border rounded-2xl px-4 py-2.5 max-w-[800px] mx-auto transition-all duration-200 focus-ring shadow-sm">
         <textarea
           ref={textareaRef}
           disabled={disabled}
-          className="flex-1 bg-transparent text-text border-none outline-none font-sans text-[15px] leading-relaxed resize-none max-h-[200px] placeholder:text-text-muted/70 disabled:opacity-50 disabled:cursor-not-allowed py-0.5"
-          placeholder={disabled ? 'Waiting for response...' : 'Message Alice...'}
+          className="flex-1 bg-transparent text-text border-none outline-none font-sans text-base leading-relaxed resize-none max-h-[200px] placeholder:text-text-muted/70 disabled:opacity-50 disabled:cursor-not-allowed py-0.5"
+          placeholder={disabled ? t('chat.waiting') : t('chat.placeholder')}
           rows={1}
           onKeyDown={handleKeyDown}
           onChange={handleInput}
@@ -52,14 +54,14 @@ export function ChatInput({ disabled, onSend }: ChatInputProps) {
         <button
           onClick={handleSend}
           disabled={disabled || !hasText}
-          className={`flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-200 shrink-0 mb-0.5 ${
+          className={`flex items-center justify-center w-10 h-10 rounded-lg transition-all duration-200 shrink-0 mb-0.5 ${
             disabled
               ? 'bg-accent/60 text-white cursor-not-allowed'
               : hasText
-                ? 'bg-accent text-white shadow-sm hover:bg-accent/85 scale-100'
+                ? 'bg-accent text-white shadow-sm hover:bg-accent/85 scale-100 btn-press'
                 : 'bg-bg-tertiary text-text-muted/40 cursor-not-allowed scale-95'
           }`}
-          aria-label="Send message"
+          aria-label={t('chat.send')}
         >
           {disabled ? (
             <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -72,7 +74,7 @@ export function ChatInput({ disabled, onSend }: ChatInputProps) {
       </div>
       <div className="text-center mt-1.5 max-w-[800px] mx-auto">
         <span className="text-[11px] text-text-muted/40">
-          Enter to send, Shift + Enter for new line
+          {t('chat.send_hint')}
         </span>
       </div>
     </div>

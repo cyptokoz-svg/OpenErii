@@ -6,20 +6,25 @@ import { SaveIndicator } from '../components/SaveIndicator'
 import { useAutoSave } from '../hooks/useAutoSave'
 import { PageHeader } from '../components/PageHeader'
 import { PageLoading, EmptyState } from '../components/StateViews'
+import { useLocale } from '../i18n'
+import { toolDescriptionsZh } from '../i18n/tool-descriptions'
 
-const GROUP_LABELS: Record<string, string> = {
-  thinking: 'Thinking Kit',
-  brain: 'Brain',
-  browser: 'Browser',
-  cron: 'Cron Scheduler',
-  equity: 'Equity Data',
-  'crypto-data': 'Crypto Data',
-  'currency-data': 'Currency Data',
-  news: 'News',
-  'news-archive': 'News Archive',
-  analysis: 'Analysis Kit',
-  'crypto-trading': 'Crypto Trading',
-  'securities-trading': 'Securities Trading',
+function useGroupLabels(): Record<string, string> {
+  const { t } = useLocale()
+  return {
+    thinking: t('tools.group_thinking'),
+    brain: t('tools.group_brain'),
+    browser: t('tools.group_browser'),
+    cron: t('tools.group_cron'),
+    equity: t('tools.group_equity'),
+    'crypto-data': t('tools.group_crypto_data'),
+    'currency-data': t('tools.group_currency'),
+    news: t('tools.group_news'),
+    'news-archive': t('tools.group_news_archive'),
+    analysis: t('tools.group_analysis'),
+    'crypto-trading': t('tools.group_crypto_trading'),
+    'securities-trading': t('tools.group_securities'),
+  }
 }
 
 interface ToolGroup {
@@ -29,6 +34,8 @@ interface ToolGroup {
 }
 
 export function ToolsPage() {
+  const { t } = useLocale()
+  const GROUP_LABELS = useGroupLabels()
   const [inventory, setInventory] = useState<ToolInfo[]>([])
   const [disabled, setDisabled] = useState<Set<string>>(new Set())
   const [loaded, setLoaded] = useState(false)
@@ -44,16 +51,16 @@ export function ToolsPage() {
 
   const groups = useMemo<ToolGroup[]>(() => {
     const map = new Map<string, ToolInfo[]>()
-    for (const t of inventory) {
-      if (!map.has(t.group)) map.set(t.group, [])
-      map.get(t.group)!.push(t)
+    for (const tool of inventory) {
+      if (!map.has(tool.group)) map.set(tool.group, [])
+      map.get(tool.group)!.push(tool)
     }
     return Array.from(map.entries()).map(([key, tools]) => ({
       key,
       label: GROUP_LABELS[key] ?? key,
       tools: tools.sort((a, b) => a.name.localeCompare(b.name)),
     }))
-  }, [inventory])
+  }, [inventory, GROUP_LABELS])
 
   const configData = useMemo(
     () => ({ disabled: [...disabled].sort() }),
@@ -98,8 +105,8 @@ export function ToolsPage() {
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <PageHeader
-        title="Tools"
-        description={<>{inventory.length} tools in {groups.length} groups — changes apply on next AI request</>}
+        title={t('tools.title')}
+        description={<>{inventory.length} {t('tools.desc_template').replace('{groups}', String(groups.length))}</>}
         right={<SaveIndicator status={status} onRetry={retry} />}
       />
 
@@ -107,7 +114,7 @@ export function ToolsPage() {
         {!loaded ? (
           <PageLoading />
         ) : groups.length === 0 ? (
-          <EmptyState title="No tools registered." description="Tools will appear here when the engine starts." />
+          <EmptyState title={t('tools.no_tools')} description={t('tools.no_tools_desc')} />
         ) : (
           <div className="max-w-[720px] space-y-2">
             {groups.map((g) => (
@@ -147,6 +154,7 @@ function ToolGroupCard({
   onToggleTool,
   onToggleGroup,
 }: ToolGroupCardProps) {
+  const { locale } = useLocale()
   const enabledCount = group.tools.filter((t) => !disabled.has(t.name)).length
   const allEnabled = enabledCount === group.tools.length
   const noneEnabled = enabledCount === 0
@@ -198,7 +206,7 @@ function ToolGroupCard({
                   <span className="text-[13px] text-text font-mono">{t.name}</span>
                   {t.description && (
                     <p className="text-[11px] text-text-muted mt-0.5 line-clamp-1">
-                      {t.description}
+                      {locale === 'zh' ? (toolDescriptionsZh[t.name] ?? t.description) : t.description}
                     </p>
                   )}
                 </div>

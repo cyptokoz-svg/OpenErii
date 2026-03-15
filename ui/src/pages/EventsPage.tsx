@@ -3,30 +3,32 @@ import { api, type EventLogEntry, type CronJob, type CronSchedule } from '../api
 import { useSSE } from '../hooks/useSSE'
 import { Toggle } from '../components/Toggle'
 import { PageHeader } from '../components/PageHeader'
+import { useLocale } from '../i18n'
 
 // ==================== Helpers ====================
 
-function formatDateTime(ts: number): string {
+function formatDateTime(ts: number, locale?: string): string {
   const d = new Date(ts)
-  const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-  const time = d.toLocaleTimeString('en-US', { hour12: false })
+  const loc = locale === 'zh' ? 'zh-CN' : 'en-US'
+  const date = d.toLocaleDateString(loc, { month: 'short', day: 'numeric' })
+  const time = d.toLocaleTimeString(loc, { hour12: false })
   return `${date} ${time}`
 }
 
-function timeAgo(ts: number | null): string {
+function timeAgo(ts: number | null, t: (k: any) => string): string {
   if (!ts) return '-'
   const diff = Date.now() - ts
-  if (diff < 60_000) return `${Math.floor(diff / 1000)}s ago`
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`
-  return `${Math.floor(diff / 86_400_000)}d ago`
+  if (diff < 60_000) return t('events.ago_seconds').replace('{n}', String(Math.floor(diff / 1000)))
+  if (diff < 3_600_000) return t('events.ago_minutes').replace('{n}', String(Math.floor(diff / 60_000)))
+  if (diff < 86_400_000) return t('events.ago_hours').replace('{n}', String(Math.floor(diff / 3_600_000)))
+  return t('events.ago_days').replace('{n}', String(Math.floor(diff / 86_400_000)))
 }
 
-function scheduleLabel(s: CronSchedule): string {
+function scheduleLabel(s: CronSchedule, t: (k: any) => string): string {
   switch (s.kind) {
-    case 'at': return `at ${s.at}`
-    case 'every': return `every ${s.every}`
-    case 'cron': return `cron: ${s.cron}`
+    case 'at': return t('events.schedule_at').replace('{v}', s.at)
+    case 'every': return t('events.schedule_every').replace('{v}', s.every)
+    case 'cron': return t('events.schedule_cron').replace('{v}', s.cron)
   }
 }
 
@@ -43,6 +45,7 @@ function eventTypeColor(type: string): string {
 const PAGE_SIZE = 100
 
 function EventLogSection() {
+  const { t } = useLocale()
   const [entries, setEntries] = useState<EventLogEntry[]>([])
   const [typeFilter, setTypeFilter] = useState('')
   const [paused, setPaused] = useState(false)
@@ -130,9 +133,9 @@ function EventLogSection() {
           onChange={(e) => handleTypeChange(e.target.value)}
           className="bg-bg-tertiary text-text text-sm rounded-md border border-border px-2 py-1.5 outline-none focus:border-accent"
         >
-          <option value="">All types</option>
-          {types.map((t) => (
-            <option key={t} value={t}>{t}</option>
+          <option value="">{t('events.all_types')}</option>
+          {types.map((tp) => (
+            <option key={tp} value={tp}>{tp}</option>
           ))}
         </select>
 
@@ -144,15 +147,15 @@ function EventLogSection() {
               : 'border-border text-text-muted hover:bg-bg-tertiary'
           }`}
         >
-          {paused ? '▶ Resume' : '⏸ Pause'}
+          {paused ? t('events.resume') : t('events.pause')}
         </button>
 
         <span className="text-xs text-text-muted ml-auto">
           {total > 0
-            ? `Page ${page} of ${totalPages} · ${total} events`
-            : '0 events'
+            ? t('events.page_info').replace('{page}', String(page)).replace('{totalPages}', String(totalPages)).replace('{total}', String(total))
+            : t('events.zero_events')
           }
-          {typeFilter && ' (filtered)'}
+          {typeFilter && ` (${t('events.filtered')})`}
         </span>
       </div>
 
@@ -162,17 +165,17 @@ function EventLogSection() {
         className="flex-1 min-h-0 bg-bg rounded-lg border border-border overflow-y-auto font-mono text-xs"
       >
         {loading && entries.length === 0 ? (
-          <div className="px-4 py-8 text-center text-text-muted">Loading...</div>
+          <div className="px-4 py-8 text-center text-text-muted">{t('common.loading')}</div>
         ) : entries.length === 0 ? (
-          <div className="px-4 py-8 text-center text-text-muted">No events yet</div>
+          <div className="px-4 py-8 text-center text-text-muted">{t('events.no_events')}</div>
         ) : (
           <table className="w-full">
             <thead className="sticky top-0 bg-bg-secondary">
               <tr className="text-text-muted text-left">
                 <th className="px-3 py-2 w-12">#</th>
-                <th className="px-3 py-2 w-36">Time</th>
-                <th className="px-3 py-2 w-40">Type</th>
-                <th className="px-3 py-2">Payload</th>
+                <th className="px-3 py-2 w-36">{t('events.time')}</th>
+                <th className="px-3 py-2 w-40">{t('events.type')}</th>
+                <th className="px-3 py-2">{t('heartbeat.payload')}</th>
               </tr>
             </thead>
             <tbody>
@@ -225,6 +228,7 @@ function EventLogSection() {
 }
 
 function EventRow({ entry }: { entry: EventLogEntry }) {
+  const { locale } = useLocale()
   const [expanded, setExpanded] = useState(false)
   const payloadStr = JSON.stringify(entry.payload)
   const isLong = payloadStr.length > 120
@@ -236,7 +240,7 @@ function EventRow({ entry }: { entry: EventLogEntry }) {
         onClick={() => isLong && setExpanded(!expanded)}
       >
         <td className="px-3 py-1.5 text-text-muted">{entry.seq}</td>
-        <td className="px-3 py-1.5 text-text-muted whitespace-nowrap">{formatDateTime(entry.ts)}</td>
+        <td className="px-3 py-1.5 text-text-muted whitespace-nowrap">{formatDateTime(entry.ts, locale)}</td>
         <td className={`px-3 py-1.5 ${eventTypeColor(entry.type)}`}>{entry.type}</td>
         <td className="px-3 py-1.5 text-text-muted truncate">
           {isLong ? payloadStr.slice(0, 120) + '...' : payloadStr}
@@ -261,6 +265,7 @@ function EventRow({ entry }: { entry: EventLogEntry }) {
 // ==================== Cron Section ====================
 
 function CronSection() {
+  const { t } = useLocale()
   const [jobs, setJobs] = useState<CronJob[]>([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
@@ -296,7 +301,7 @@ function CronSection() {
       await api.cron.update(job.id, { enabled: !job.enabled })
       await loadJobs()
     } catch {
-      showError('Failed to toggle job')
+      showError(t('events.failed_toggle'))
     }
   }
 
@@ -305,7 +310,7 @@ function CronSection() {
       await api.cron.runNow(job.id)
       await loadJobs()
     } catch {
-      showError('Failed to run job')
+      showError(t('events.failed_run'))
     }
   }
 
@@ -315,24 +320,24 @@ function CronSection() {
       await api.cron.remove(job.id)
       await loadJobs()
     } catch {
-      showError('Failed to delete job')
+      showError(t('events.failed_delete'))
     }
   }
 
   if (loading) {
-    return <div className="text-text-muted text-sm py-4">Loading cron jobs...</div>
+    return <div className="text-text-muted text-sm py-4">{t('events.loading_cron')}</div>
   }
 
   return (
     <div className="flex flex-col gap-3">
       {error && <div className="text-xs text-red">{error}</div>}
       <div className="flex items-center justify-between">
-        <span className="text-xs text-text-muted">{jobs.length} jobs</span>
+        <span className="text-xs text-text-muted">{jobs.length} {t('events.jobs_count')}</span>
         <button
           onClick={() => setShowAdd(true)}
           className="text-xs px-3 py-1.5 rounded-md bg-accent/20 text-accent border border-accent/30 hover:bg-accent/30 transition-colors"
         >
-          + Add Job
+          {t('events.add_job')}
         </button>
       </div>
 
@@ -344,7 +349,7 @@ function CronSection() {
       )}
 
       {jobs.length === 0 ? (
-        <div className="text-text-muted text-sm text-center py-6">No cron jobs</div>
+        <div className="text-text-muted text-sm text-center py-6">{t('events.no_cron')}</div>
       ) : (
         <div className="space-y-2">
           {jobs.map((job) => (
@@ -368,6 +373,7 @@ function CronJobCard({ job, onToggle, onRunNow, onDelete }: {
   onRunNow: () => void
   onDelete: () => void
 }) {
+  const { t, locale } = useLocale()
   const [expanded, setExpanded] = useState(false)
   const isHeartbeat = job.name === '__heartbeat__'
 
@@ -381,19 +387,19 @@ function CronJobCard({ job, onToggle, onRunNow, onDelete }: {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className={`text-sm font-medium ${isHeartbeat ? 'text-purple' : 'text-text'}`}>
-              {isHeartbeat ? '💓 heartbeat' : job.name}
+              {isHeartbeat ? t('events.heartbeat_label') : job.name}
             </span>
             <span className="text-xs text-text-muted">{job.id}</span>
             {job.state.lastStatus === 'error' && (
               <span className="text-xs text-red">
-                {job.state.consecutiveErrors}x err
+                {job.state.consecutiveErrors}{t('events.err_count')}
               </span>
             )}
           </div>
           <div className="text-xs text-text-muted mt-0.5">
-            {scheduleLabel(job.schedule)}
+            {scheduleLabel(job.schedule, t)}
             {job.state.nextRunAtMs && (
-              <span className="ml-2">• next: {formatDateTime(job.state.nextRunAtMs)}</span>
+              <span className="ml-2">• {t('events.next_run')} {formatDateTime(job.state.nextRunAtMs, locale)}</span>
             )}
           </div>
         </div>
@@ -402,14 +408,14 @@ function CronJobCard({ job, onToggle, onRunNow, onDelete }: {
         <div className="flex items-center gap-1.5">
           <button
             onClick={onRunNow}
-            title="Run now"
+            title={t('events.run_now')}
             className="p-1.5 rounded text-text-muted hover:text-accent hover:bg-bg-tertiary transition-colors text-xs"
           >
             ▶
           </button>
           <button
             onClick={() => setExpanded(!expanded)}
-            title="Details"
+            title={t('events.details')}
             className="p-1.5 rounded text-text-muted hover:text-text hover:bg-bg-tertiary transition-colors text-xs"
           >
             {expanded ? '▾' : '▸'}
@@ -417,7 +423,7 @@ function CronJobCard({ job, onToggle, onRunNow, onDelete }: {
           {!isHeartbeat && (
             <button
               onClick={onDelete}
-              title="Delete"
+              title={t('common.delete')}
               className="p-1.5 rounded text-text-muted hover:text-red hover:bg-bg-tertiary transition-colors text-xs"
             >
               ✕
@@ -429,13 +435,13 @@ function CronJobCard({ job, onToggle, onRunNow, onDelete }: {
       {expanded && (
         <div className="border-t border-border/50 px-4 py-3 text-xs space-y-2">
           <div>
-            <span className="text-text-muted">Payload: </span>
+            <span className="text-text-muted">{t('events.cron_payload')} </span>
             <pre className="inline text-text whitespace-pre-wrap break-all">{job.payload}</pre>
           </div>
           <div className="flex gap-4 text-text-muted">
-            <span>Last run: {job.state.lastRunAtMs ? `${timeAgo(job.state.lastRunAtMs)} (${formatDateTime(job.state.lastRunAtMs)})` : 'never'}</span>
-            <span>Status: {job.state.lastStatus ?? 'n/a'}</span>
-            <span>Created: {formatDateTime(job.createdAt)}</span>
+            <span>{t('events.last_run')} {job.state.lastRunAtMs ? `${timeAgo(job.state.lastRunAtMs, t)} (${formatDateTime(job.state.lastRunAtMs, locale)})` : t('events.never')}</span>
+            <span>{t('events.cron_status')} {job.state.lastStatus ?? t('events.na')}</span>
+            <span>{t('events.created')} {formatDateTime(job.createdAt, locale)}</span>
           </div>
         </div>
       )}
@@ -444,6 +450,7 @@ function CronJobCard({ job, onToggle, onRunNow, onDelete }: {
 }
 
 function AddCronJobForm({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const { t } = useLocale()
   const [name, setName] = useState('')
   const [payload, setPayload] = useState('')
   const [schedKind, setSchedKind] = useState<'every' | 'cron' | 'at'>('every')
@@ -454,7 +461,7 @@ function AddCronJobForm({ onClose, onCreated }: { onClose: () => void; onCreated
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim() || !payload.trim()) {
-      setError('Name and payload are required')
+      setError(t('events.name_required'))
       return
     }
 
@@ -469,7 +476,7 @@ function AddCronJobForm({ onClose, onCreated }: { onClose: () => void; onCreated
       await api.cron.add({ name: name.trim(), payload: payload.trim(), schedule })
       onCreated()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Create failed')
+      setError(err instanceof Error ? err.message : t('events.create_failed'))
     } finally {
       setSaving(false)
     }
@@ -478,20 +485,20 @@ function AddCronJobForm({ onClose, onCreated }: { onClose: () => void; onCreated
   return (
     <form onSubmit={handleSubmit} className="bg-bg rounded-lg border border-accent/30 p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-text">New Cron Job</span>
+        <span className="text-sm font-medium text-text">{t('events.new_cron')}</span>
         <button type="button" onClick={onClose} className="text-text-muted hover:text-text text-xs">✕</button>
       </div>
 
       <input
         type="text"
-        placeholder="Job name"
+        placeholder={t('events.job_name')}
         value={name}
         onChange={(e) => setName(e.target.value)}
         className="w-full bg-bg-tertiary border border-border rounded-md px-3 py-2 text-sm text-text outline-none focus:border-accent"
       />
 
       <textarea
-        placeholder="Payload / instruction text"
+        placeholder={t('events.payload_text')}
         value={payload}
         onChange={(e) => setPayload(e.target.value)}
         rows={2}
@@ -510,9 +517,9 @@ function AddCronJobForm({ onClose, onCreated }: { onClose: () => void; onCreated
           }}
           className="bg-bg-tertiary border border-border rounded-md px-2 py-2 text-sm text-text outline-none focus:border-accent"
         >
-          <option value="every">Every</option>
-          <option value="cron">Cron</option>
-          <option value="at">At (one-shot)</option>
+          <option value="every">{t('events.every')}</option>
+          <option value="cron">{t('events.cron')}</option>
+          <option value="at">{t('events.at_oneshot')}</option>
         </select>
 
         <input
@@ -532,14 +539,14 @@ function AddCronJobForm({ onClose, onCreated }: { onClose: () => void; onCreated
           onClick={onClose}
           className="px-3 py-1.5 text-sm rounded-md text-text-muted hover:text-text hover:bg-bg-tertiary transition-colors"
         >
-          Cancel
+          {t('trading.cancel')}
         </button>
         <button
           type="submit"
           disabled={saving}
           className="px-3 py-1.5 text-sm rounded-md bg-accent text-white hover:bg-accent/80 transition-colors disabled:opacity-50"
         >
-          {saving ? 'Creating...' : 'Create'}
+          {saving ? t('trading.creating') : t('trading.create')}
         </button>
       </div>
     </form>
@@ -551,12 +558,13 @@ function AddCronJobForm({ onClose, onCreated }: { onClose: () => void; onCreated
 type Tab = 'events' | 'cron'
 
 export function EventsPage() {
+  const { t } = useLocale()
   const [tab, setTab] = useState<Tab>('events')
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <PageHeader
-        title="Events"
+        title={t('events.title')}
         right={
           <div className="flex gap-1 bg-bg-secondary rounded-lg p-1">
             <button
@@ -567,7 +575,7 @@ export function EventsPage() {
                   : 'text-text-muted hover:text-text'
               }`}
             >
-              Event Log
+              {t('events.event_log')}
             </button>
             <button
               onClick={() => setTab('cron')}
@@ -577,7 +585,7 @@ export function EventsPage() {
                   : 'text-text-muted hover:text-text'
               }`}
             >
-              Cron Jobs
+              {t('events.cron_jobs')}
             </button>
           </div>
         }

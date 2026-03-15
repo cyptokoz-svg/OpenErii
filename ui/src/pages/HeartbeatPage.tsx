@@ -5,6 +5,7 @@ import { SaveIndicator } from '../components/SaveIndicator'
 import { Section, Field, inputClass } from '../components/form'
 import { useAutoSave } from '../hooks/useAutoSave'
 import { PageHeader } from '../components/PageHeader'
+import { useLocale } from '../i18n'
 
 // ==================== Helpers ====================
 
@@ -25,6 +26,7 @@ function eventTypeColor(type: string): string {
 // ==================== Status Bar ====================
 
 function StatusBar() {
+  const { t } = useLocale()
   const [enabled, setEnabled] = useState<boolean | null>(null)
   const [triggering, setTriggering] = useState(false)
   const [feedback, setFeedback] = useState<string | null>(null)
@@ -39,7 +41,7 @@ function StatusBar() {
       const result = await api.heartbeat.setEnabled(v)
       setEnabled(result.enabled)
     } catch {
-      setError('Failed to toggle heartbeat')
+      setError(t('heartbeat.toggle_failed'))
       setTimeout(() => setError(null), 3000)
     }
   }
@@ -49,7 +51,7 @@ function StatusBar() {
     setFeedback(null)
     try {
       await api.heartbeat.trigger()
-      setFeedback('Heartbeat triggered!')
+      setFeedback(t('heartbeat.triggered'))
       setTimeout(() => setFeedback(null), 3000)
     } catch (err) {
       setFeedback(err instanceof Error ? err.message : 'Trigger failed')
@@ -65,9 +67,9 @@ function StatusBar() {
         <div className="flex items-center gap-3">
           <span className="text-lg">💓</span>
           <div>
-            <div className="text-sm font-medium text-text">Heartbeat</div>
+            <div className="text-sm font-medium text-text">{t('heartbeat.label')}</div>
             <div className="text-xs text-text-muted">
-              Periodic self-check and autonomous thinking
+              {t('heartbeat.periodic_desc')}
             </div>
           </div>
         </div>
@@ -86,7 +88,7 @@ function StatusBar() {
             disabled={triggering}
             className="px-3 py-1.5 text-xs rounded-md bg-purple-dim text-purple border border-purple/30 hover:bg-purple/30 transition-colors disabled:opacity-50"
           >
-            {triggering ? 'Triggering...' : 'Trigger Now'}
+            {triggering ? t('heartbeat.triggering') : t('heartbeat.trigger_now')}
           </button>
 
           {enabled !== null && (
@@ -101,6 +103,7 @@ function StatusBar() {
 // ==================== Config Section ====================
 
 function ConfigSection({ config }: { config: AppConfig }) {
+  const { t } = useLocale()
   const [every, setEvery] = useState(config.heartbeat?.every || '30m')
   const [ahEnabled, setAhEnabled] = useState(config.heartbeat?.activeHours != null)
   const [ahStart, setAhStart] = useState(config.heartbeat?.activeHours?.start || '09:00')
@@ -120,8 +123,8 @@ function ConfigSection({ config }: { config: AppConfig }) {
   const { status, retry } = useAutoSave({ data: configData, save })
 
   return (
-    <Section title="Configuration">
-      <Field label="Interval">
+    <Section title={t('heartbeat.configuration')}>
+      <Field label={t('heartbeat.interval')}>
         <input
           className={inputClass}
           value={every}
@@ -132,13 +135,13 @@ function ConfigSection({ config }: { config: AppConfig }) {
 
       <div className="mb-3">
         <div className="flex items-center justify-between mb-2">
-          <label className="text-[13px] text-text-muted">Active Hours</label>
+          <label className="text-[13px] text-text-muted">{t('heartbeat.active_hours')}</label>
           <Toggle checked={ahEnabled} onChange={setAhEnabled} />
         </div>
         {ahEnabled && (
           <div className="flex gap-2 items-end">
             <div className="flex-1">
-              <label className="block text-[11px] text-text-muted mb-1">Start</label>
+              <label className="block text-[11px] text-text-muted mb-1">{t('heartbeat.start')}</label>
               <input
                 className={inputClass}
                 value={ahStart}
@@ -147,7 +150,7 @@ function ConfigSection({ config }: { config: AppConfig }) {
               />
             </div>
             <div className="flex-1">
-              <label className="block text-[11px] text-text-muted mb-1">End</label>
+              <label className="block text-[11px] text-text-muted mb-1">{t('heartbeat.end')}</label>
               <input
                 className={inputClass}
                 value={ahEnd}
@@ -156,13 +159,13 @@ function ConfigSection({ config }: { config: AppConfig }) {
               />
             </div>
             <div className="flex-1">
-              <label className="block text-[11px] text-text-muted mb-1">Timezone</label>
+              <label className="block text-[11px] text-text-muted mb-1">{t('heartbeat.timezone')}</label>
               <select
                 className={inputClass}
                 value={ahTimezone}
                 onChange={(e) => setAhTimezone(e.target.value)}
               >
-                <option value="local">Local</option>
+                <option value="local">{t('heartbeat.tz_local')}</option>
                 <option value="UTC">UTC</option>
                 <option value="America/New_York">US Eastern</option>
                 <option value="America/Chicago">US Central</option>
@@ -187,6 +190,7 @@ function ConfigSection({ config }: { config: AppConfig }) {
 // ==================== Prompt Editor ====================
 
 function PromptEditor() {
+  const { t } = useLocale()
   const [content, setContent] = useState('')
   const [filePath, setFilePath] = useState('')
   const [loading, setLoading] = useState(true)
@@ -222,9 +226,9 @@ function PromptEditor() {
   }
 
   return (
-    <Section title="Prompt File" description={filePath || undefined}>
+    <Section title={t('heartbeat.prompt_file')} description={filePath || undefined}>
       {loading ? (
-        <div className="text-sm text-text-muted">Loading...</div>
+        <div className="text-sm text-text-muted">{t('common.loading')}</div>
       ) : (
         <>
           <textarea
@@ -238,12 +242,12 @@ function PromptEditor() {
               disabled={saving || !dirty}
               className="px-3 py-1.5 text-xs rounded-md bg-accent text-bg font-medium hover:opacity-90 transition-opacity disabled:opacity-40"
             >
-              {saving ? 'Saving...' : 'Save'}
+              {saving ? t('save.saving') : t('common.save')}
             </button>
             {saved && (
               <span className="inline-flex items-center gap-1.5 text-[11px]">
                 <span className="w-1.5 h-1.5 rounded-full bg-green" />
-                <span className="text-text-muted">Saved</span>
+                <span className="text-text-muted">{t('save.saved')}</span>
               </span>
             )}
             {error && (
@@ -253,7 +257,7 @@ function PromptEditor() {
               </span>
             )}
             {dirty && !saved && !error && (
-              <span className="text-[11px] text-text-muted">Unsaved changes</span>
+              <span className="text-[11px] text-text-muted">{t('heartbeat.unsaved')}</span>
             )}
           </div>
         </>
@@ -265,6 +269,7 @@ function PromptEditor() {
 // ==================== Recent Events ====================
 
 function RecentEvents() {
+  const { t } = useLocale()
   const [entries, setEntries] = useState<EventLogEntry[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -282,20 +287,20 @@ function RecentEvents() {
   }, [])
 
   return (
-    <Section title="Recent Events">
+    <Section title={t('heartbeat.recent_events')}>
       <div className="bg-bg rounded-lg border border-border overflow-x-auto font-mono text-xs">
         {loading ? (
-          <div className="px-4 py-6 text-center text-text-muted">Loading...</div>
+          <div className="px-4 py-6 text-center text-text-muted">{t('common.loading')}</div>
         ) : entries.length === 0 ? (
-          <div className="px-4 py-6 text-center text-text-muted">No heartbeat events yet</div>
+          <div className="px-4 py-6 text-center text-text-muted">{t('heartbeat.no_events')}</div>
         ) : (
           <table className="w-full">
             <thead className="bg-bg-secondary">
               <tr className="text-text-muted text-left">
                 <th className="px-3 py-2 w-12">#</th>
-                <th className="px-3 py-2 w-36">Time</th>
-                <th className="px-3 py-2 w-32">Type</th>
-                <th className="px-3 py-2">Payload</th>
+                <th className="px-3 py-2 w-36">{t('heartbeat.time')}</th>
+                <th className="px-3 py-2 w-32">{t('common.status')}</th>
+                <th className="px-3 py-2">{t('heartbeat.payload')}</th>
               </tr>
             </thead>
             <tbody>
@@ -325,6 +330,7 @@ function RecentEvents() {
 // ==================== Main Page ====================
 
 export function HeartbeatPage() {
+  const { t } = useLocale()
   const [config, setConfig] = useState<AppConfig | null>(null)
 
   useEffect(() => {
@@ -333,7 +339,7 @@ export function HeartbeatPage() {
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <PageHeader title="Heartbeat" />
+      <PageHeader title={t('heartbeat.title')} />
 
       <div className="flex-1 overflow-y-auto px-4 md:px-6 py-5">
         <div className="max-w-[720px] space-y-6">

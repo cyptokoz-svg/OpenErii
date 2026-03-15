@@ -1,11 +1,25 @@
+import { useMemo } from 'react'
 import { useConfigPage } from '../hooks/useConfigPage'
 import { SaveIndicator } from '../components/SaveIndicator'
 import { SDKSelector, CONNECTOR_OPTIONS } from '../components/SDKSelector'
 import { Section, Field, inputClass } from '../components/form'
 import { PageHeader } from '../components/PageHeader'
+import { useLocale } from '../i18n'
 import type { AppConfig, ConnectorsConfig } from '../api'
 
 export function ConnectorsPage() {
+  const { t } = useLocale()
+
+  const connectorOptions = useMemo(() => CONNECTOR_OPTIONS.map((opt) => ({
+    ...opt,
+    ...({
+      web: { name: t('connectors.web_ui'), description: t('connectors.web_ui_desc') },
+      mcp: { name: t('connectors.mcp_server'), description: t('connectors.mcp_server_desc') },
+      mcpAsk: { name: t('connectors.mcp_ask'), description: t('connectors.mcp_ask_desc') },
+      telegram: { name: t('connectors.telegram'), description: t('connectors.telegram_desc') },
+    }[opt.id] ?? {}),
+  })), [t])
+
   const { config, status, loadError, updateConfig, updateConfigImmediate, retry } =
     useConfigPage<ConnectorsConfig>({
       section: 'connectors',
@@ -34,8 +48,8 @@ export function ConnectorsPage() {
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <PageHeader
-        title="Connectors"
-        description="Service ports and external integrations. Changes require a restart."
+        title={t('connectors.title')}
+        description={t('connectors.description')}
         right={<SaveIndicator status={status} onRetry={retry} />}
       />
 
@@ -45,11 +59,11 @@ export function ConnectorsPage() {
           <div className="max-w-[640px] space-y-5">
             {/* Connector selector cards */}
             <Section
-              title="Active Connectors"
-              description="Select which connectors to enable. Web UI and MCP Server are always active."
+              title={t('connectors.active')}
+              description={t('connectors.active_desc')}
             >
               <SDKSelector
-                options={CONNECTOR_OPTIONS}
+                options={connectorOptions}
                 selected={selected}
                 onToggle={handleToggle}
               />
@@ -57,10 +71,10 @@ export function ConnectorsPage() {
 
             {/* Web UI config — always shown */}
             <Section
-              title="Web UI"
-              description="Browser-based chat and configuration interface."
+              title={t('connectors.web_ui')}
+              description={t('connectors.web_ui_desc')}
             >
-              <Field label="Port">
+              <Field label={t('connectors.port')}>
                 <input
                   className={inputClass}
                   type="number"
@@ -72,10 +86,10 @@ export function ConnectorsPage() {
 
             {/* MCP Server config — always shown */}
             <Section
-              title="MCP Server"
-              description="Tool bridge for Claude Code provider and external AI agents."
+              title={t('connectors.mcp_server')}
+              description={t('connectors.mcp_server_desc')}
             >
-              <Field label="Port">
+              <Field label={t('connectors.port')}>
                 <input
                   className={inputClass}
                   type="number"
@@ -88,10 +102,10 @@ export function ConnectorsPage() {
             {/* MCP Ask config */}
             {config.mcpAsk.enabled && (
               <Section
-                title="MCP Ask"
-                description="Multi-turn conversation endpoint for external agents."
+                title={t('connectors.mcp_ask')}
+                description={t('connectors.mcp_ask_desc')}
               >
-                <Field label="Port">
+                <Field label={t('connectors.port')}>
                   <input
                     className={inputClass}
                     type="number"
@@ -109,10 +123,10 @@ export function ConnectorsPage() {
             {/* Telegram config */}
             {config.telegram.enabled && (
               <Section
-                title="Telegram"
-                description="Create a bot via @BotFather, paste the token below, and add your chat ID."
+                title={t('connectors.telegram')}
+                description={t('connectors.telegram_desc')}
               >
-                <Field label="Bot Token">
+                <Field label={t('connectors.bot_token')}>
                   <input
                     className={inputClass}
                     type="password"
@@ -125,7 +139,7 @@ export function ConnectorsPage() {
                     placeholder="123456:ABC-DEF..."
                   />
                 </Field>
-                <Field label="Bot Username">
+                <Field label={t('connectors.bot_username')}>
                   <input
                     className={inputClass}
                     value={config.telegram.botUsername ?? ''}
@@ -137,7 +151,7 @@ export function ConnectorsPage() {
                     placeholder="my_bot"
                   />
                 </Field>
-                <Field label="Allowed Chat IDs">
+                <Field label={t('connectors.chat_ids')}>
                   <input
                     className={inputClass}
                     value={config.telegram.chatIds.join(', ')}
@@ -154,14 +168,14 @@ export function ConnectorsPage() {
                         },
                       })
                     }
-                    placeholder="Comma-separated, e.g. 123456, 789012"
+                    placeholder={t('connectors.chat_ids_placeholder')}
                   />
                 </Field>
               </Section>
             )}
           </div>
         )}
-        {loadError && <p className="text-[13px] text-red">Failed to load configuration.</p>}
+        {loadError && <p className="text-[13px] text-red">{t('connectors.load_error')}</p>}
       </div>
     </div>
   )

@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { Section, Field, inputClass } from './form'
+import { useLocale } from '../i18n'
+import type { TranslationKey } from '../i18n'
 
 // ==================== Types ====================
 
 export interface GuardType {
   type: string
-  label: string
-  desc: string
+  label: TranslationKey
+  desc: TranslationKey
 }
 
 export interface GuardEntry {
@@ -18,17 +20,17 @@ export interface GuardEntry {
 
 /** Crypto guards (superset — includes max-leverage) */
 export const CRYPTO_GUARD_TYPES: GuardType[] = [
-  { type: 'max-position-size', label: 'Max Position Size', desc: 'Limits each position as a percentage of account equity.' },
-  { type: 'max-leverage', label: 'Max Leverage', desc: 'Caps leverage for all symbols, with optional per-symbol overrides.' },
-  { type: 'cooldown', label: 'Cooldown', desc: 'Enforces a minimum interval between trades on the same symbol.' },
-  { type: 'symbol-whitelist', label: 'Symbol Whitelist', desc: 'Restricts trading to a specific set of symbols.' },
+  { type: 'max-position-size', label: 'guard.max_position', desc: 'guard.max_position_desc' },
+  { type: 'max-leverage', label: 'guard.max_leverage', desc: 'guard.max_leverage_desc' },
+  { type: 'cooldown', label: 'guard.cooldown', desc: 'guard.cooldown_desc' },
+  { type: 'symbol-whitelist', label: 'guard.whitelist', desc: 'guard.whitelist_desc' },
 ]
 
 /** Securities guards (no max-leverage) */
 export const SECURITIES_GUARD_TYPES: GuardType[] = [
-  { type: 'max-position-size', label: 'Max Position Size', desc: 'Limits each position as a percentage of account equity.' },
-  { type: 'cooldown', label: 'Cooldown', desc: 'Enforces a minimum interval between trades on the same symbol.' },
-  { type: 'symbol-whitelist', label: 'Symbol Whitelist', desc: 'Restricts trading to a specific set of symbols.' },
+  { type: 'max-position-size', label: 'guard.max_position', desc: 'guard.max_position_desc' },
+  { type: 'cooldown', label: 'guard.cooldown', desc: 'guard.cooldown_desc' },
+  { type: 'symbol-whitelist', label: 'guard.whitelist', desc: 'guard.whitelist_desc' },
 ]
 
 const GUARD_DEFAULTS: Record<string, Record<string, unknown>> = {
@@ -75,6 +77,7 @@ interface GuardsSectionProps {
 }
 
 export function GuardsSection({ guards, guardTypes, description, onChange, onChangeImmediate }: GuardsSectionProps) {
+  const { t } = useLocale()
   const [editingIdx, setEditingIdx] = useState<number | null>(null)
 
   const addGuard = (type: string) => {
@@ -106,12 +109,12 @@ export function GuardsSection({ guards, guardTypes, description, onChange, onCha
   return (
     <div className="border-t border-border pt-5">
       <Section
-        title="Guards"
+        title={t('guard.title')}
         description={description}
       >
         {guards.length === 0 && (
           <p className="text-[12px] text-text-muted/60 mb-3">
-            No guards configured. All trades will pass through unchecked.
+            {t('guard.empty')}
           </p>
         )}
 
@@ -130,7 +133,7 @@ export function GuardsSection({ guards, guardTypes, description, onChange, onCha
                     {isEditing ? '▼' : '▶'}
                   </button>
                   <span className="text-[13px] font-medium text-text flex-1">
-                    {meta?.label || guard.type}
+                    {meta ? t(meta.label) : guard.type}
                     <span className="text-text-muted font-normal ml-2 text-[12px]">
                       {guardSummary(guard)}
                     </span>
@@ -140,7 +143,7 @@ export function GuardsSection({ guards, guardTypes, description, onChange, onCha
                       onClick={() => moveGuard(idx, -1)}
                       disabled={idx === 0}
                       className="text-text-muted hover:text-text disabled:opacity-25 p-1 text-[11px]"
-                      title="Move up"
+                      title={t('guard.move_up')}
                     >
                       ▲
                     </button>
@@ -148,14 +151,14 @@ export function GuardsSection({ guards, guardTypes, description, onChange, onCha
                       onClick={() => moveGuard(idx, 1)}
                       disabled={idx === guards.length - 1}
                       className="text-text-muted hover:text-text disabled:opacity-25 p-1 text-[11px]"
-                      title="Move down"
+                      title={t('guard.move_down')}
                     >
                       ▼
                     </button>
                     <button
                       onClick={() => removeGuard(idx)}
                       className="text-text-muted hover:text-red p-1 ml-1 text-[13px]"
-                      title="Remove"
+                      title={t('guard.remove')}
                     >
                       ×
                     </button>
@@ -165,7 +168,7 @@ export function GuardsSection({ guards, guardTypes, description, onChange, onCha
                 {/* Editor */}
                 {isEditing && (
                   <div className="px-3 pb-3 pt-1 border-t border-border">
-                    {meta && <p className="text-[11px] text-text-muted/60 mb-2">{meta.desc}</p>}
+                    {meta && <p className="text-[11px] text-text-muted/60 mb-2">{t(meta.desc)}</p>}
                     <GuardOptionsEditor
                       type={guard.type}
                       options={guard.options}
@@ -198,6 +201,7 @@ function AddGuardButton({
   types: GuardType[]
   onAdd: (type: string) => void
 }) {
+  const { t } = useLocale()
   const [open, setOpen] = useState(false)
 
   if (!open) {
@@ -206,26 +210,26 @@ function AddGuardButton({
         onClick={() => setOpen(true)}
         className="border border-dashed border-border rounded-lg px-3 py-2 text-[12px] text-text-muted hover:text-text hover:border-text-muted transition-colors w-full text-left"
       >
-        + Add Guard
+        {t('guard.add')}
       </button>
     )
   }
 
   return (
     <div className="border border-border rounded-lg bg-bg-secondary p-3 space-y-1.5">
-      <p className="text-[11px] text-text-muted mb-1.5">Select a guard type:</p>
+      <p className="text-[11px] text-text-muted mb-1.5">{t('guard.select')}</p>
       {types.map(({ type, label, desc }) => (
         <button
           key={type}
           onClick={() => { onAdd(type); setOpen(false) }}
           className="block w-full text-left px-2.5 py-2 rounded-md hover:bg-bg-tertiary transition-colors"
         >
-          <span className="text-[13px] text-text font-medium">{label}</span>
-          <span className="block text-[11px] text-text-muted/60">{desc}</span>
+          <span className="text-[13px] text-text font-medium">{t(label)}</span>
+          <span className="block text-[11px] text-text-muted/60">{t(desc)}</span>
         </button>
       ))}
       <button onClick={() => setOpen(false)} className="text-[11px] text-text-muted hover:text-text mt-1">
-        Cancel
+        {t('trading.cancel')}
       </button>
     </div>
   )
@@ -262,9 +266,10 @@ interface EditorProps {
 }
 
 function MaxPositionSizeEditor({ options, onChange }: EditorProps) {
+  const { t } = useLocale()
   const pct = Number(options.maxPercentOfEquity ?? 25)
   return (
-    <Field label="Max % of Equity per Position">
+    <Field label={t('guard.max_pct_equity')}>
       <input
         className={inputClass}
         type="number"
@@ -274,16 +279,17 @@ function MaxPositionSizeEditor({ options, onChange }: EditorProps) {
         onChange={(e) => onChange({ ...options, maxPercentOfEquity: Number(e.target.value) })}
       />
       <p className="text-[10px] text-text-muted/60 mt-1">
-        Rejects orders where estimated position value exceeds this % of account equity.
+        {t('guard.max_pct_equity_desc')}
       </p>
     </Field>
   )
 }
 
 function MaxLeverageEditor({ options, onChange }: EditorProps) {
+  const { t } = useLocale()
   const lev = Number(options.maxLeverage ?? 10)
   return (
-    <Field label="Maximum Leverage">
+    <Field label={t('guard.max_lev_label')}>
       <input
         className={inputClass}
         type="number"
@@ -293,17 +299,18 @@ function MaxLeverageEditor({ options, onChange }: EditorProps) {
         onChange={(e) => onChange({ ...options, maxLeverage: Number(e.target.value) })}
       />
       <p className="text-[10px] text-text-muted/60 mt-1">
-        Rejects orders and leverage adjustments exceeding this limit.
+        {t('guard.max_lev_desc')}
       </p>
     </Field>
   )
 }
 
 function CooldownEditor({ options, onChange }: EditorProps) {
+  const { t } = useLocale()
   const ms = Number(options.minIntervalMs ?? 60000)
   const seconds = Math.round(ms / 1000)
   return (
-    <Field label="Cooldown (seconds)">
+    <Field label={t('guard.cooldown_label')}>
       <input
         className={inputClass}
         type="number"
@@ -312,17 +319,18 @@ function CooldownEditor({ options, onChange }: EditorProps) {
         onChange={(e) => onChange({ ...options, minIntervalMs: Number(e.target.value) * 1000 })}
       />
       <p className="text-[10px] text-text-muted/60 mt-1">
-        Minimum seconds between trades on the same symbol.
+        {t('guard.cooldown_label_desc')}
       </p>
     </Field>
   )
 }
 
 function SymbolWhitelistEditor({ options, onChange }: EditorProps) {
+  const { t } = useLocale()
   const symbols = (options.symbols as string[] | undefined) ?? []
   const value = symbols.join(', ')
   return (
-    <Field label="Allowed Symbols">
+    <Field label={t('guard.allowed_symbols')}>
       <input
         className={inputClass}
         type="text"
@@ -335,13 +343,14 @@ function SymbolWhitelistEditor({ options, onChange }: EditorProps) {
         }}
       />
       <p className="text-[10px] text-text-muted/60 mt-1">
-        Comma-separated list of symbols allowed for trading.
+        {t('guard.allowed_symbols_desc')}
       </p>
     </Field>
   )
 }
 
 function GenericEditor({ options, onChange }: EditorProps) {
+  const { t } = useLocale()
   const [raw, setRaw] = useState(() => JSON.stringify(options, null, 2))
   const [parseError, setParseError] = useState(false)
 
@@ -356,14 +365,14 @@ function GenericEditor({ options, onChange }: EditorProps) {
   }
 
   return (
-    <Field label="Options (JSON)">
+    <Field label={t('guard.options_json')}>
       <textarea
         className={`${inputClass} min-h-[80px] font-mono text-[12px] ${parseError ? 'border-red' : ''}`}
         value={raw}
         onChange={(e) => setRaw(e.target.value)}
         onBlur={handleBlur}
       />
-      {parseError && <p className="text-[10px] text-red mt-1">Invalid JSON</p>}
+      {parseError && <p className="text-[10px] text-red mt-1">{t('guard.invalid_json')}</p>}
     </Field>
   )
 }

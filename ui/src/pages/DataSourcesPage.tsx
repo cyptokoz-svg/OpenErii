@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { api, type AppConfig, type NewsCollectorConfig, type NewsCollectorFeed } from '../api'
 import { SaveIndicator } from '../components/SaveIndicator'
 import { Field, inputClass } from '../components/form'
 import { Toggle } from '../components/Toggle'
 import { useConfigPage } from '../hooks/useConfigPage'
 import { PageHeader } from '../components/PageHeader'
+import { useLocale } from '../i18n'
 import type { SaveStatus } from '../hooks/useAutoSave'
 
 type OpenbbConfig = Record<string, unknown>
@@ -26,12 +27,12 @@ const PROVIDER_OPTIONS: Record<string, string[]> = {
   newsWorld: ['fmp', 'benzinga', 'tiingo', 'biztoc', 'intrinio'],
 }
 
-const ASSET_LABELS: Record<string, string> = {
-  equity: 'Equity',
-  crypto: 'Crypto',
-  currency: 'Currency',
-  newsCompany: 'News (Company)',
-  newsWorld: 'News (World)',
+const ASSET_LABEL_KEYS: Record<string, string> = {
+  equity: 'datasources.equity',
+  crypto: 'datasources.crypto',
+  currency: 'datasources.currency',
+  newsCompany: 'datasources.news_company',
+  newsWorld: 'datasources.news_world',
 }
 
 /** Maps provider name → providerKeys key. null means free, no key required. */
@@ -47,12 +48,12 @@ const PROVIDER_KEY_MAP: Record<string, string | null> = {
 
 /** Macro/utility providers used by dedicated endpoints (not per-asset-class selectable) */
 const UTILITY_PROVIDERS = [
-  { key: 'fred', name: 'FRED', desc: 'Federal Reserve Economic Data — CPI, GDP, interest rates, macro indicators.', hint: 'Free — fredaccount.stlouisfed.org/apikeys' },
-  { key: 'bls', name: 'BLS', desc: 'Bureau of Labor Statistics — employment, payrolls, wages, CPI.', hint: 'Free — registrationapps.bls.gov/bls_registration' },
-  { key: 'eia', name: 'EIA', desc: 'Energy Information Administration — petroleum status, energy reports.', hint: 'Free — eia.gov/opendata' },
-  { key: 'econdb', name: 'EconDB', desc: 'Global macro indicators, country profiles, shipping data.', hint: 'Optional — works without key (limited). econdb.com' },
-  { key: 'nasdaq', name: 'Nasdaq', desc: 'Nasdaq Data Link — dividend/earnings calendars, short interest.', hint: 'Freemium — data.nasdaq.com' },
-  { key: 'tradingeconomics', name: 'Trading Economics', desc: '20M+ indicators across 196 countries, economic calendar.', hint: 'Paid — tradingeconomics.com' },
+  { key: 'fred', name: 'FRED', descKey: 'datasources.fred_desc', hintKey: 'datasources.fred_hint' },
+  { key: 'bls', name: 'BLS', descKey: 'datasources.bls_desc', hintKey: 'datasources.bls_hint' },
+  { key: 'eia', name: 'EIA', descKey: 'datasources.eia_desc', hintKey: 'datasources.eia_hint' },
+  { key: 'econdb', name: 'EconDB', descKey: 'datasources.econdb_desc', hintKey: 'datasources.econdb_hint' },
+  { key: 'nasdaq', name: 'Nasdaq', descKey: 'datasources.nasdaq_desc', hintKey: 'datasources.nasdaq_hint' },
+  { key: 'tradingeconomics', name: 'Trading Economics', descKey: 'datasources.tradingeconomics_desc', hintKey: 'datasources.tradingeconomics_hint' },
 ] as const
 
 // ==================== Zone ====================
@@ -100,6 +101,7 @@ interface AssetProviderGridProps {
 }
 
 function AssetProviderGrid({ providers, providerKeys, onProviderChange, onKeyChange }: AssetProviderGridProps) {
+  const { t } = useLocale()
   const [localKeys, setLocalKeys] = useState<Record<string, string>>(() => ({ ...providerKeys }))
   const [testStatus, setTestStatus] = useState<Record<string, 'idle' | 'testing' | 'ok' | 'error'>>({})
 
@@ -123,7 +125,7 @@ function AssetProviderGrid({ providers, providerKeys, onProviderChange, onKeyCha
 
   return (
     <div className="border-t border-border pt-4 mt-2 space-y-2">
-      <p className="text-[11px] font-semibold text-text-muted uppercase tracking-wide mb-3">Asset Providers</p>
+      <p className="text-[11px] font-semibold text-text-muted uppercase tracking-wide mb-3">{t('datasources.asset_providers')}</p>
       {Object.entries(PROVIDER_OPTIONS).map(([asset, options]) => {
         const selectedProvider = providers[asset] || options[0]
         const keyName = PROVIDER_KEY_MAP[selectedProvider] ?? null
@@ -131,7 +133,7 @@ function AssetProviderGrid({ providers, providerKeys, onProviderChange, onKeyCha
 
         return (
           <div key={asset} className="flex items-center gap-2">
-            <span className="text-[12px] text-text-muted w-28 shrink-0">{ASSET_LABELS[asset]}</span>
+            <span className="text-[12px] text-text-muted w-28 shrink-0">{t(ASSET_LABEL_KEYS[asset] as Parameters<typeof t>[0])}</span>
             <select
               className={inputClass}
               value={selectedProvider}
@@ -146,7 +148,7 @@ function AssetProviderGrid({ providers, providerKeys, onProviderChange, onKeyCha
                   type="password"
                   value={localKeys[keyName] || ''}
                   onChange={(e) => handleKeyChange(keyName, e.target.value)}
-                  placeholder="API key"
+                  placeholder={t('datasources.api_key')}
                 />
                 <button
                   onClick={() => testProvider(selectedProvider, keyName)}
@@ -159,11 +161,11 @@ function AssetProviderGrid({ providers, providerKeys, onProviderChange, onKeyCha
                         : 'border-border text-text-muted hover:bg-bg-tertiary hover:text-text'
                   }`}
                 >
-                  {status === 'testing' ? '…' : status === 'ok' ? 'OK' : status === 'error' ? 'Fail' : 'Test'}
+                  {status === 'testing' ? '…' : status === 'ok' ? 'OK' : status === 'error' ? 'Fail' : t('datasources.test')}
                 </button>
               </>
             ) : (
-              <span className="text-[11px] text-text-muted/50 px-2.5">Free</span>
+              <span className="text-[11px] text-text-muted/50 px-2.5">{t('datasources.free')}</span>
             )}
           </div>
         )
@@ -178,12 +180,26 @@ interface UtilityProvidersSectionProps {
 }
 
 function UtilityProvidersSection({ providerKeys, onKeyChange }: UtilityProvidersSectionProps) {
+  const { t } = useLocale()
   const [expanded, setExpanded] = useState(false)
   const [localKeys, setLocalKeys] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {}
     for (const p of UTILITY_PROVIDERS) init[p.key] = providerKeys[p.key] || ''
     return init
   })
+
+  // Sync when providerKeys loads from API
+  useEffect(() => {
+    setLocalKeys((prev) => {
+      const next = { ...prev }
+      for (const p of UTILITY_PROVIDERS) {
+        if (providerKeys[p.key] && !next[p.key]) {
+          next[p.key] = providerKeys[p.key]
+        }
+      }
+      return next
+    })
+  }, [providerKeys])
   const [testStatus, setTestStatus] = useState<Record<string, 'idle' | 'testing' | 'ok' | 'error'>>({})
 
   const configuredCount = Object.values(localKeys).filter(Boolean).length
@@ -213,30 +229,30 @@ function UtilityProvidersSection({ providerKeys, onKeyChange }: UtilityProviders
         className="flex items-center gap-2 text-[12px] text-text-muted hover:text-text transition-colors w-full"
       >
         <span className="text-[10px]">{expanded ? '▼' : '▶'}</span>
-        <span className="font-semibold uppercase tracking-wide">Macro & Utility Providers</span>
+        <span className="font-semibold uppercase tracking-wide">{t('datasources.macro_providers')}</span>
         <span className="text-[11px] ml-auto">
-          {configuredCount > 0 ? `${configuredCount} configured` : 'None configured'}
+          {configuredCount > 0 ? `${configuredCount} ${t('datasources.configured')}` : t('datasources.none_configured')}
         </span>
       </button>
       {expanded && (
         <div className="mt-3">
           <p className="text-[12px] text-text-muted mb-3">
-            Used by dedicated macro endpoints (FRED for CPI/GDP, BLS for employment, EIA for energy). Not per-asset-class selectable.
+            {t('datasources.macro_desc')}
           </p>
           <div className="space-y-3">
-            {UTILITY_PROVIDERS.map(({ key, name, desc, hint }) => {
+            {UTILITY_PROVIDERS.map(({ key, name, descKey, hintKey }) => {
               const status = testStatus[key] || 'idle'
               return (
                 <Field key={key} label={name}>
-                  <p className="text-[11px] text-text-muted mb-0.5">{desc}</p>
-                  <p className="text-[10px] text-text-muted/60 mb-1.5">{hint}</p>
+                  <p className="text-[11px] text-text-muted mb-0.5">{t(descKey as Parameters<typeof t>[0])}</p>
+                  <p className="text-[10px] text-text-muted/60 mb-1.5">{t(hintKey as Parameters<typeof t>[0])}</p>
                   <div className="flex items-center gap-2">
                     <input
                       className={inputClass}
                       type="password"
                       value={localKeys[key]}
                       onChange={(e) => handleKeyChange(key, e.target.value)}
-                      placeholder="Not configured"
+                      placeholder={t('datasources.not_configured')}
                     />
                     <button
                       onClick={() => testProvider(key)}
@@ -249,7 +265,7 @@ function UtilityProvidersSection({ providerKeys, onKeyChange }: UtilityProviders
                             : 'border-border text-text-muted hover:bg-bg-tertiary hover:text-text'
                       }`}
                     >
-                      {status === 'testing' ? '…' : status === 'ok' ? 'OK' : status === 'error' ? 'Fail' : 'Test'}
+                      {status === 'testing' ? '…' : status === 'ok' ? 'OK' : status === 'error' ? 'Fail' : t('datasources.test')}
                     </button>
                   </div>
                 </Field>
@@ -271,6 +287,7 @@ interface MarketDataZoneProps {
 }
 
 function MarketDataZone({ openbb, enabled, onToggle, onChange, onChangeImmediate }: MarketDataZoneProps) {
+  const { t } = useLocale()
   const [testing, setTesting] = useState(false)
   const [testStatus, setTestStatus] = useState<'idle' | 'ok' | 'error'>('idle')
 
@@ -311,14 +328,14 @@ function MarketDataZone({ openbb, enabled, onToggle, onChange, onChangeImmediate
 
   return (
     <Zone
-      title="Market Data Engine"
-      subtitle="Structured financial data via OpenBB — configure once per asset class."
+      title={t('datasources.market_engine')}
+      subtitle={t('datasources.market_engine_desc')}
       enabled={enabled}
       onToggle={onToggle}
     >
       {/* Backend selector */}
       <div>
-        <p className="text-[11px] font-semibold text-text-muted uppercase tracking-wide mb-2">Data Backend</p>
+        <p className="text-[11px] font-semibold text-text-muted uppercase tracking-wide mb-2">{t('datasources.data_backend')}</p>
         <div className="flex border border-border rounded-lg overflow-hidden w-fit">
           {(['sdk', 'openbb'] as const).map((backend, i) => (
             <button
@@ -332,21 +349,21 @@ function MarketDataZone({ openbb, enabled, onToggle, onChange, onChangeImmediate
                   : 'text-text-muted hover:text-text'
               }`}
             >
-              {backend === 'sdk' ? 'Internal SDK' : 'External OpenBB'}
+              {backend === 'sdk' ? t('datasources.internal_sdk') : t('datasources.external_openbb')}
             </button>
           ))}
         </div>
         <p className="text-[11px] text-text-muted mt-1.5">
           {dataBackend === 'sdk'
-            ? 'Uses the built-in TypeScript OpenBB engine. No external process required.'
-            : 'Connects to an external OpenBB HTTP server (Python sidecar or custom).'}
+            ? t('datasources.internal_desc')
+            : t('datasources.external_desc')}
         </p>
       </div>
 
       {/* Connection — only shown for external OpenBB backend */}
       {dataBackend === 'openbb' && (
         <div className="border-t border-border pt-4 mt-2">
-          <p className="text-[11px] font-semibold text-text-muted uppercase tracking-wide mb-2">Connection</p>
+          <p className="text-[11px] font-semibold text-text-muted uppercase tracking-wide mb-2">{t('datasources.connection')}</p>
           <div className="flex items-center gap-2">
             <input
               className={`${inputClass} flex-1`}
@@ -365,7 +382,7 @@ function MarketDataZone({ openbb, enabled, onToggle, onChange, onChangeImmediate
                     : 'border-border text-text-muted hover:bg-bg-tertiary hover:text-text'
               }`}
             >
-              {testing ? 'Testing…' : testStatus === 'ok' ? 'Connected' : testStatus === 'error' ? 'Failed' : 'Test Connection'}
+              {testing ? t('datasources.testing') : testStatus === 'ok' ? t('datasources.connected') : testStatus === 'error' ? t('datasources.test_failed') : t('datasources.test_connection')}
             </button>
             {testStatus !== 'idle' && (
               <div className={`w-2 h-2 rounded-full shrink-0 ${testStatus === 'ok' ? 'bg-green' : 'bg-red'}`} />
@@ -384,17 +401,17 @@ function MarketDataZone({ openbb, enabled, onToggle, onChange, onChangeImmediate
 
       {/* Embedded API server */}
       <div className="border-t border-border pt-4 mt-2">
-        <p className="text-[11px] font-semibold text-text-muted uppercase tracking-wide mb-2">Embedded API Server</p>
+        <p className="text-[11px] font-semibold text-text-muted uppercase tracking-wide mb-2">{t('datasources.embedded_api')}</p>
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1">
-            <p className="text-[13px] text-text">Expose OpenBB HTTP API</p>
+            <p className="text-[13px] text-text">{t('datasources.expose_api')}</p>
             <p className="text-[11px] text-text-muted mt-0.5">
-              Start an OpenBB-compatible HTTP server at Alice startup. Other services can connect to{' '}
+              {t('datasources.expose_api_desc_prefix')}{' '}
               <span className="font-mono text-[10px]">http://localhost:{apiServer.port}</span>.
             </p>
             {apiServer.enabled && (
               <div className="flex items-center gap-2 mt-2">
-                <label className="text-[11px] text-text-muted shrink-0">Port</label>
+                <label className="text-[11px] text-text-muted shrink-0">{t('datasources.port')}</label>
                 <input
                   className={`${inputClass} w-24`}
                   type="number"
@@ -432,6 +449,7 @@ function FeedsSection({
   feeds: NewsCollectorFeed[]
   onChange: (feeds: NewsCollectorFeed[]) => void
 }) {
+  const { t } = useLocale()
   const [newName, setNewName] = useState('')
   const [newUrl, setNewUrl] = useState('')
   const [newSource, setNewSource] = useState('')
@@ -448,9 +466,9 @@ function FeedsSection({
 
   return (
     <div>
-      <p className="text-[11px] font-semibold text-text-muted uppercase tracking-wide mb-2">RSS Feeds</p>
+      <p className="text-[11px] font-semibold text-text-muted uppercase tracking-wide mb-2">{t('datasources.rss_feeds')}</p>
       <p className="text-[11px] text-text-muted mb-3">
-        Collected articles are searchable via globNews / grepNews / readNews. Changes take effect on the next fetch cycle.
+        {t('datasources.rss_desc')}
       </p>
 
       {/* Existing feeds */}
@@ -464,7 +482,7 @@ function FeedsSection({
               <div className="flex-1 min-w-0">
                 <p className="text-[13px] font-medium text-text truncate">{feed.name}</p>
                 <p className="text-[11px] text-text-muted truncate">{feed.url}</p>
-                <p className="text-[10px] text-text-muted/60 mt-0.5">source: {feed.source}</p>
+                <p className="text-[10px] text-text-muted/60 mt-0.5">{t('datasources.source_label')}: {feed.source}</p>
               </div>
               <button
                 onClick={() => removeFeed(i)}
@@ -481,24 +499,24 @@ function FeedsSection({
         </div>
       )}
       {feeds.length === 0 && (
-        <p className="text-[12px] text-text-muted mb-3">No feeds configured.</p>
+        <p className="text-[12px] text-text-muted mb-3">{t('datasources.no_feeds')}</p>
       )}
 
       {/* Add feed form */}
       <div className="border border-border/60 rounded-lg p-3 space-y-2">
-        <p className="text-[11px] font-semibold text-text-muted uppercase tracking-wide mb-1">Add Feed</p>
+        <p className="text-[11px] font-semibold text-text-muted uppercase tracking-wide mb-1">{t('datasources.add_feed')}</p>
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label className="block text-[11px] text-text-muted mb-0.5">Name</label>
+            <label className="block text-[11px] text-text-muted mb-0.5">{t('datasources.name')}</label>
             <input className={inputClass} value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. CoinDesk" />
           </div>
           <div>
-            <label className="block text-[11px] text-text-muted mb-0.5">Source Tag</label>
+            <label className="block text-[11px] text-text-muted mb-0.5">{t('datasources.source_tag')}</label>
             <input className={inputClass} value={newSource} onChange={(e) => setNewSource(e.target.value)} placeholder="e.g. coindesk" />
           </div>
         </div>
         <div>
-          <label className="block text-[11px] text-text-muted mb-0.5">Feed URL</label>
+          <label className="block text-[11px] text-text-muted mb-0.5">{t('datasources.feed_url')}</label>
           <input className={inputClass} value={newUrl} onChange={(e) => setNewUrl(e.target.value)} placeholder="https://example.com/rss.xml" />
         </div>
         <button
@@ -506,7 +524,7 @@ function FeedsSection({
           disabled={!newName.trim() || !newUrl.trim() || !newSource.trim()}
           className="border border-border rounded-lg px-4 py-2 text-[13px] font-medium cursor-pointer transition-colors hover:bg-bg-tertiary hover:text-text text-text-muted disabled:opacity-40 disabled:cursor-default"
         >
-          Add Feed
+          {t('datasources.add_feed')}
         </button>
       </div>
     </div>
@@ -520,12 +538,13 @@ interface CompactNewsSettingsProps {
 }
 
 function CompactNewsSettings({ config, onChange, onChangeImmediate }: CompactNewsSettingsProps) {
+  const { t } = useLocale()
   return (
     <div className="border-t border-border pt-4 mt-4">
-      <p className="text-[11px] font-semibold text-text-muted uppercase tracking-wide mb-3">Settings</p>
+      <p className="text-[11px] font-semibold text-text-muted uppercase tracking-wide mb-3">{t('datasources.news_settings')}</p>
       <div className="grid grid-cols-2 gap-3 mb-3">
         <div>
-          <label className="block text-[11px] text-text-muted mb-0.5">Fetch interval (min)</label>
+          <label className="block text-[11px] text-text-muted mb-0.5">{t('datasources.fetch_interval')}</label>
           <input
             className={inputClass}
             type="number"
@@ -535,7 +554,7 @@ function CompactNewsSettings({ config, onChange, onChangeImmediate }: CompactNew
           />
         </div>
         <div>
-          <label className="block text-[11px] text-text-muted mb-0.5">Retention (days)</label>
+          <label className="block text-[11px] text-text-muted mb-0.5">{t('datasources.retention')}</label>
           <input
             className={inputClass}
             type="number"
@@ -547,9 +566,9 @@ function CompactNewsSettings({ config, onChange, onChangeImmediate }: CompactNew
       </div>
       <div className="flex items-center justify-between">
         <div className="flex-1 mr-3">
-          <span className="text-[13px] text-text">Piggyback OpenBB</span>
+          <span className="text-[13px] text-text">{t('datasources.piggyback')}</span>
           <p className="text-[11px] text-text-muted mt-0.5">
-            Capture results from newsGetWorld / newsGetCompany into the news store.
+            {t('datasources.piggyback_desc')}
           </p>
         </div>
         <Toggle size="sm" checked={config.piggybackOpenBB} onChange={(v) => onChangeImmediate({ piggybackOpenBB: v })} />
@@ -567,12 +586,13 @@ interface OpenIntelligenceZoneProps {
 }
 
 function OpenIntelligenceZone({ config, enabled, onToggle, onChange, onChangeImmediate }: OpenIntelligenceZoneProps) {
-  const badge = config.feeds.length > 0 ? `${config.feeds.length} feeds` : undefined
+  const { t } = useLocale()
+  const badge = config.feeds.length > 0 ? `${config.feeds.length} ${t('datasources.feeds_badge')}` : undefined
 
   return (
     <Zone
-      title="Open Intelligence"
-      subtitle="Accumulative news & feed store — keep adding sources, let AI do the mining."
+      title={t('datasources.open_intel')}
+      subtitle={t('datasources.open_intel_desc')}
       badge={badge}
       enabled={enabled}
       onToggle={onToggle}
@@ -602,6 +622,7 @@ const DEFAULT_NEWS_CONFIG: NewsCollectorConfig = {
 }
 
 export function DataSourcesPage() {
+  const { t } = useLocale()
   const openbb = useConfigPage<OpenbbConfig>({
     section: 'openbb',
     extract: (full: AppConfig) => (full as Record<string, unknown>).openbb as OpenbbConfig,
@@ -622,8 +643,8 @@ export function DataSourcesPage() {
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <PageHeader
-        title="Data Sources"
-        description="Market data and news feed configuration."
+        title={t('datasources.title')}
+        description={t('datasources.description')}
         right={<SaveIndicator status={status} onRetry={retry} />}
       />
 
@@ -641,12 +662,12 @@ export function DataSourcesPage() {
             />
           ) : (
             <Zone
-              title="Market Data Engine"
-              subtitle="Structured financial data via OpenBB — configure once per asset class."
+              title={t('datasources.market_engine')}
+              subtitle={t('datasources.market_engine_desc')}
               enabled={true}
               onToggle={() => {}}
             >
-              <p className="text-[12px] text-text-muted">Loading…</p>
+              <p className="text-[12px] text-text-muted">{t('common.loading')}</p>
             </Zone>
           )}
 
@@ -661,16 +682,16 @@ export function DataSourcesPage() {
             />
           ) : (
             <Zone
-              title="Open Intelligence"
-              subtitle="Accumulative news & feed store — keep adding sources, let AI do the mining."
+              title={t('datasources.open_intel')}
+              subtitle={t('datasources.open_intel_desc')}
               enabled={true}
               onToggle={() => {}}
             >
-              <p className="text-[12px] text-text-muted">Loading…</p>
+              <p className="text-[12px] text-text-muted">{t('common.loading')}</p>
             </Zone>
           )}
         </div>
-        {loadError && <p className="text-[13px] text-red mt-4">Failed to load configuration.</p>}
+        {loadError && <p className="text-[13px] text-red mt-4">{t('datasources.load_error')}</p>}
       </div>
     </div>
   )

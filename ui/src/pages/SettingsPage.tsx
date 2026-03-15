@@ -6,8 +6,10 @@ import { Section, Field, inputClass } from '../components/form'
 import { useAutoSave } from '../hooks/useAutoSave'
 import { PageHeader } from '../components/PageHeader'
 import { PageLoading } from '../components/StateViews'
+import { useLocale } from '../i18n'
 
 export function SettingsPage() {
+  const { t } = useLocale()
   const [config, setConfig] = useState<AppConfig | null>(null)
 
   useEffect(() => {
@@ -16,22 +18,22 @@ export function SettingsPage() {
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <PageHeader title="Settings" />
+      <PageHeader title={t('settings.title')} />
 
       {config ? (
       <div className="flex-1 overflow-y-auto px-4 md:px-6 py-6">
           <div className="max-w-[640px] space-y-5">
             {/* Agent */}
-            <Section id="agent" title="Agent" description="Controls file-system and tool permissions for the AI. Changes apply on the next request.">
+            <Section id="agent" title={t('settings.agent')} description={t('settings.agent_desc')}>
               <div className="flex items-center justify-between gap-4 py-1">
                 <div className="flex-1">
                   <span className="text-sm font-medium text-text">
-                    Evolution Mode
+                    {t('settings.evolution_mode')}
                   </span>
                   <p className="text-[12px] text-text-muted mt-0.5 leading-relaxed">
                     {config.agent?.evolutionMode
-                      ? 'Full project access — AI can modify source code'
-                      : 'Sandbox mode — AI can only edit data/brain/'}
+                      ? t('settings.evolution_on')
+                      : t('settings.evolution_off')}
                   </p>
                 </div>
                 <Toggle
@@ -49,7 +51,7 @@ export function SettingsPage() {
             </Section>
 
             {/* Compaction */}
-            <Section id="compaction" title="Compaction" description="Context window management. When conversation size approaches Max Context minus Max Output tokens, older messages are automatically summarized to free up space.">
+            <Section id="compaction" title={t('settings.compaction')} description={t('settings.compaction_desc')}>
               <CompactionForm config={config} />
             </Section>
           </div>
@@ -64,6 +66,7 @@ export function SettingsPage() {
 // ==================== Form Sections ====================
 
 function CompactionForm({ config }: { config: AppConfig }) {
+  const { t } = useLocale()
   const [ctx, setCtx] = useState(String(config.compaction?.maxContextTokens || ''))
   const [out, setOut] = useState(String(config.compaction?.maxOutputTokens || ''))
 
@@ -80,14 +83,13 @@ function CompactionForm({ config }: { config: AppConfig }) {
 
   return (
     <>
-      <Field label="Max Context Tokens">
+      <Field label={t('settings.max_context')}>
         <input className={inputClass} type="number" step={1000} value={ctx} onChange={(e) => setCtx(e.target.value)} />
       </Field>
-      <Field label="Max Output Tokens">
+      <Field label={t('settings.max_output')}>
         <input className={inputClass} type="number" step={1000} value={out} onChange={(e) => setOut(e.target.value)} />
       </Field>
       <SaveIndicator status={status} onRetry={retry} />
     </>
   )
 }
-

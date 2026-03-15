@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { api, type Position, type WalletCommitLog } from '../api'
 import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/StateViews'
+import { useLocale } from '../i18n'
 
 // ==================== Types ====================
 
@@ -32,6 +33,7 @@ const EMPTY: PortfolioData = { equity: null, accounts: [] }
 // ==================== Page ====================
 
 export function PortfolioPage() {
+  const { t } = useLocale()
   const [data, setData] = useState<PortfolioData>(EMPTY)
   const [loading, setLoading] = useState(true)
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
@@ -69,15 +71,15 @@ export function PortfolioPage() {
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <PageHeader
-        title="Portfolio"
-        description={<>Live portfolio overview across all trading accounts.{lastRefresh && <span className="ml-2 text-text-muted/50">Updated {lastRefresh.toLocaleTimeString()}</span>}</>}
+        title={t('portfolio.title')}
+        description={<>{t('portfolio.description')}{lastRefresh && <span className="ml-2 text-text-muted/50">{t('portfolio.updated')} {lastRefresh.toLocaleTimeString()}</span>}</>}
         right={
           <button
             onClick={refresh}
             disabled={loading}
             className="px-3 py-1.5 text-[13px] font-medium rounded-md border border-border hover:bg-bg-tertiary disabled:opacity-50 transition-colors"
           >
-            {loading ? 'Loading...' : 'Refresh'}
+            {loading ? t('portfolio.loading') : t('portfolio.refresh')}
           </button>
         }
       />
@@ -97,10 +99,10 @@ export function PortfolioPage() {
 
           {/* Empty states */}
           {data.accounts.length === 0 && !loading && (
-            <EmptyState title="No trading accounts connected." description="Configure connections in the Trading page." />
+            <EmptyState title={t('portfolio.no_accounts')} description={t('portfolio.no_accounts_desc')} />
           )}
           {data.accounts.length > 0 && allPositions.length === 0 && !loading && (
-            <EmptyState title="No open positions." />
+            <EmptyState title={t('portfolio.no_positions')} />
           )}
 
           {allWalletLogs.length > 0 && (
@@ -147,21 +149,22 @@ async function fetchPortfolioData(): Promise<PortfolioData> {
 // ==================== Hero Metrics ====================
 
 function HeroMetrics({ equity }: { equity: AggregatedEquity | null }) {
+  const { t } = useLocale()
   if (!equity) {
     return (
       <div className="border border-border rounded-lg bg-bg-secondary p-5 text-center">
-        <p className="text-[13px] text-text-muted">Unable to load portfolio data.</p>
+        <p className="text-[13px] text-text-muted">{t('portfolio.unable_load')}</p>
       </div>
     )
   }
 
   return (
-    <div className="border border-border rounded-lg bg-bg-secondary p-5">
+    <div className="rounded-xl p-5 glow-accent hero-metrics-card" style={{ border: '1px solid var(--color-border)' }}>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <HeroItem label="Total Equity" value={fmt(equity.totalEquity)} />
-        <HeroItem label="Cash" value={fmt(equity.totalCash)} />
-        <HeroItem label="Unrealized PnL" value={fmtPnl(equity.totalUnrealizedPnL)} pnl={equity.totalUnrealizedPnL} />
-        <HeroItem label="Realized PnL" value={fmtPnl(equity.totalRealizedPnL)} pnl={equity.totalRealizedPnL} />
+        <HeroItem label={t('portfolio.total_equity')} value={fmt(equity.totalEquity)} />
+        <HeroItem label={t('portfolio.cash')} value={fmt(equity.totalCash)} />
+        <HeroItem label={t('portfolio.unrealized_pnl')} value={fmtPnl(equity.totalUnrealizedPnL)} pnl={equity.totalUnrealizedPnL} />
+        <HeroItem label={t('portfolio.realized_pnl')} value={fmtPnl(equity.totalRealizedPnL)} pnl={equity.totalRealizedPnL} />
       </div>
     </div>
   )
@@ -246,22 +249,23 @@ function contractDisplay(p: Position): { name: string; tag?: string } {
 }
 
 function PositionsTable({ positions }: { positions: PositionWithAccount[] }) {
+  const { t } = useLocale()
   return (
     <div>
       <h3 className="text-[13px] font-semibold text-text-muted uppercase tracking-wide mb-3">
-        Positions
+        {t('portfolio.positions')}
       </h3>
       <div className="border border-border rounded-lg overflow-x-auto">
         <table className="w-full text-[13px]">
           <thead>
             <tr className="bg-bg-secondary text-text-muted text-left">
-              <th className="px-3 py-2 font-medium">Symbol</th>
-              <th className="px-3 py-2 font-medium text-right">Qty</th>
-              <th className="px-3 py-2 font-medium text-right">Avg Cost</th>
-              <th className="px-3 py-2 font-medium text-right">Current</th>
-              <th className="px-3 py-2 font-medium text-right">Mkt Value</th>
-              <th className="px-3 py-2 font-medium text-right">PnL</th>
-              <th className="px-3 py-2 font-medium text-right">PnL %</th>
+              <th className="px-3 py-2 font-medium">{t('portfolio.symbol')}</th>
+              <th className="px-3 py-2 font-medium text-right">{t('portfolio.qty')}</th>
+              <th className="px-3 py-2 font-medium text-right">{t('portfolio.avg_cost')}</th>
+              <th className="px-3 py-2 font-medium text-right">{t('portfolio.current')}</th>
+              <th className="px-3 py-2 font-medium text-right">{t('portfolio.mkt_value')}</th>
+              <th className="px-3 py-2 font-medium text-right">{t('portfolio.pnl')}</th>
+              <th className="px-3 py-2 font-medium text-right">{t('portfolio.pnl_pct')}</th>
             </tr>
           </thead>
           <tbody>
@@ -281,7 +285,7 @@ function PositionsTable({ positions }: { positions: PositionWithAccount[] }) {
                       )}
                       {deriv && (
                         <span className={`text-[10px] px-1 py-0.5 rounded font-medium ${p.side === 'long' ? 'bg-green/15 text-green' : 'bg-red/15 text-red'}`}>
-                          {p.side}
+                          {p.side === 'long' ? t('portfolio.long') : t('portfolio.short')}
                         </span>
                       )}
                       {p.leverage > 1 && (
@@ -292,9 +296,9 @@ function PositionsTable({ positions }: { positions: PositionWithAccount[] }) {
                     {/* Secondary: margin / liquidation for derivatives */}
                     {hasMarginInfo && (
                       <div className="text-[11px] text-text-muted mt-0.5">
-                        {p.margin ? `Margin ${fmt(p.margin)}` : ''}
+                        {p.margin ? `${t('portfolio.margin')} ${fmt(p.margin)}` : ''}
                         {p.margin && p.liquidationPrice ? ' \u00b7 ' : ''}
-                        {p.liquidationPrice ? `Liq ${fmt(p.liquidationPrice)}` : ''}
+                        {p.liquidationPrice ? `${t('portfolio.liquidation')} ${fmt(p.liquidationPrice)}` : ''}
                       </div>
                     )}
                   </td>
@@ -326,6 +330,7 @@ interface CommitWithAccount extends WalletCommitLog {
 }
 
 function TradeLog({ commits }: { commits: CommitWithAccount[] }) {
+  const { t } = useLocale()
   const sorted = [...commits]
     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
     .slice(0, 10)
@@ -335,7 +340,7 @@ function TradeLog({ commits }: { commits: CommitWithAccount[] }) {
   return (
     <div>
       <h3 className="text-[13px] font-semibold text-text-muted uppercase tracking-wide mb-3">
-        Recent Trades
+        {t('portfolio.recent_trades')}
       </h3>
       <div className="space-y-2">
         {sorted.map((commit) => {

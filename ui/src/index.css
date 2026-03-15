@@ -1,23 +1,35 @@
 @import "tailwindcss";
 
-/* GitHub Dark theme palette */
+/* ✨ OpenErii — Modern Trading Dashboard Theme */
 @theme {
-  --color-bg: #0d1117;
-  --color-bg-secondary: #161b22;
-  --color-bg-tertiary: #21262d;
-  --color-border: #30363d;
-  --color-text: #e6edf3;
-  --color-text-muted: #8b949e;
-  --color-accent: #58a6ff;
-  --color-accent-dim: rgba(31, 111, 235, 0.2);
-  --color-user-bubble: #1f6feb;
-  --color-assistant-bubble: #161b22;
-  --color-notification-bg: #2d1f00;
-  --color-notification-border: #d29922;
-  --color-green: #3fb950;
-  --color-red: #f85149;
+  /* Neutral dark base — no blue tint */
+  --color-bg: #0a0a0f;
+  --color-bg-secondary: #111118;
+  --color-bg-tertiary: #1a1a24;
+  --color-border: #1e1e2c;
+  --color-border-hover: #2e2e3e;
+  --color-text: #e0e0e8;
+  --color-text-muted: #6b7288;
+  /* Teal-cyan accent — fresh & modern */
+  --color-accent: #06d6a0;
+  --color-accent-dim: rgba(6, 214, 160, 0.15);
+  --color-accent-secondary: #7c5cfc;
+  --color-accent-secondary-dim: rgba(124, 92, 252, 0.15);
+  /* Chat bubbles */
+  --color-user-bubble: #7c5cfc;
+  --color-assistant-bubble: #111118;
+  /* Notification */
+  --color-notification-bg: #1a1820;
+  --color-notification-border: #f0b429;
+  /* Semantic */
+  --color-green: #06d6a0;
+  --color-red: #ff6b6b;
   --color-purple: #a78bfa;
-  --color-purple-dim: rgba(139, 92, 246, 0.2);
+  --color-purple-dim: rgba(139, 92, 246, 0.15);
+  --color-amber: #f0b429;
+  /* Sidebar gradient stops */
+  --color-sidebar-top: #0c0c14;
+  --color-sidebar-bottom: #0f0f1a;
 
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
     "Microsoft YaHei", "Hiragino Sans GB", "Noto Sans CJK SC", sans-serif;
@@ -25,22 +37,269 @@
     monospace;
 }
 
+/* ☀️ Light Theme Override */
+html.light {
+  --color-bg: #f8f9fb;
+  --color-bg-secondary: #ffffff;
+  --color-bg-tertiary: #f0f1f4;
+  --color-border: #e2e4ea;
+  --color-border-hover: #cccfd8;
+  --color-text: #1a1a2e;
+  --color-text-muted: #6b7280;
+  --color-accent: #059669;
+  --color-accent-dim: rgba(5, 150, 105, 0.1);
+  --color-accent-secondary: #6d4adb;
+  --color-accent-secondary-dim: rgba(109, 74, 219, 0.1);
+  --color-user-bubble: #6d4adb;
+  --color-assistant-bubble: #ffffff;
+  --color-notification-bg: #fffbeb;
+  --color-notification-border: #d97706;
+  --color-green: #059669;
+  --color-red: #dc2626;
+  --color-purple: #7c3aed;
+  --color-purple-dim: rgba(124, 58, 237, 0.1);
+  --color-amber: #d97706;
+  --color-sidebar-top: #f3f4f6;
+  --color-sidebar-bottom: #ebedf2;
+}
+
+html.light .glass-card {
+  background: linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(248,249,251,0.8) 100%);
+  border: 1px solid rgba(226,228,234,0.8);
+}
+html.light .glass-card:hover {
+  border-color: rgba(204,207,216,0.9);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(204,207,216,0.4);
+}
+html.light .nav-active-glow {
+  box-shadow: inset 0 0 16px rgba(5, 150, 105, 0.04);
+}
+html.light .table-row-hover:hover {
+  background: linear-gradient(90deg, rgba(5, 150, 105, 0.04) 0%, transparent 60%);
+}
+html.light .focus-ring:focus-within {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.08);
+}
+html.light .glow-accent {
+  box-shadow: 0 1px 4px rgba(5,150,105,0.08), 0 2px 12px rgba(5,150,105,0.04);
+}
+html.light .glow-purple {
+  box-shadow: 0 1px 4px rgba(109,74,219,0.08), 0 2px 12px rgba(109,74,219,0.04);
+}
+html.light .gradient-text {
+  background: linear-gradient(135deg, #059669 0%, #6d4adb 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+html.light .gradient-bg-animated {
+  background: linear-gradient(-45deg, #f8f9fb, #ffffff, #f5f3ff, #f0fdf4);
+  background-size: 400% 400%;
+}
+html.light ::-webkit-scrollbar-thumb {
+  background: #cccfd8;
+}
+html.light ::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+html.light .code-block-wrapper .code-copy-btn:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+html.light .markdown-content pre {
+  background: #f0f1f4;
+}
+
+/* Hero metrics card */
+.hero-metrics-card {
+  background: linear-gradient(135deg, rgba(6,214,160,0.05) 0%, rgba(124,92,252,0.06) 50%, var(--color-bg-secondary) 100%);
+}
+
+/* User bubble */
+.user-bubble {
+  background: linear-gradient(135deg, #7c5cfc 0%, #6366f1 100%);
+  color: #fff;
+}
+html.light .user-bubble {
+  background: linear-gradient(135deg, #6d4adb 0%, #5b5bd6 100%);
+  color: #fff;
+}
+
+/* Theme transition */
+html {
+  transition: background-color 0.3s ease, color 0.3s ease;
+  background-color: #0a0a0f;
+  overflow: hidden;
+}
+
+html.light {
+  background-color: #f8f9fb;
+}
+
 html,
 body,
 #root {
+  height: 100dvh;
   height: 100%;
+  overflow-x: hidden;
+  width: 100%;
+  max-width: 100vw;
+}
+
+/* Safe area: extend content behind notch */
+.safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Mobile: smooth scrolling + overscroll containment */
+@supports (-webkit-touch-callout: none) {
+  body {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+* {
+  overscroll-behavior: contain;
+  box-sizing: border-box;
+}
+
+/* Prevent text selection on non-editable UI elements */
+nav, aside, header, button, [role="button"] {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* iOS tap highlight removal */
+* {
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* Scrollbar styling */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 5px;
+  height: 5px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--color-border);
-  border-radius: 3px;
+  background: var(--color-border-hover);
+  border-radius: 10px;
+  transition: background 0.2s;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-hover) transparent;
+}
+
+/* Glassmorphism card utility */
+.glass-card {
+  background: linear-gradient(135deg, rgba(17, 17, 24, 0.8) 0%, rgba(26, 26, 36, 0.6) 100%);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(30, 30, 44, 0.6);
+  transition: border-color 0.2s, box-shadow 0.3s, transform 0.2s;
+}
+.glass-card:hover {
+  border-color: rgba(46, 46, 62, 0.8);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(46, 46, 62, 0.3);
+  transform: translateY(-1px);
+}
+
+/* Glow accent for interactive elements */
+.glow-accent {
+  box-shadow: 0 0 20px rgba(6, 214, 160, 0.1), 0 0 40px rgba(6, 214, 160, 0.05);
+}
+.glow-purple {
+  box-shadow: 0 0 20px rgba(124, 92, 252, 0.1), 0 0 40px rgba(124, 92, 252, 0.05);
+}
+
+/* Sidebar active nav glow */
+.nav-active-glow {
+  box-shadow: inset 0 0 20px rgba(6, 214, 160, 0.04), 0 0 12px rgba(6, 214, 160, 0.03);
+}
+
+/* Table row hover — subtle highlight strip */
+.table-row-hover:hover {
+  background: linear-gradient(90deg, rgba(6, 214, 160, 0.03) 0%, transparent 60%);
+}
+
+/* Button press effect */
+.btn-press:active {
+  transform: scale(0.97);
+}
+
+/* Channel tab active indicator */
+.channel-tab-active {
+  position: relative;
+}
+.channel-tab-active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 20%;
+  right: 20%;
+  height: 2px;
+  border-radius: 1px;
+  background: linear-gradient(90deg, #06d6a0, #7c5cfc);
+}
+
+/* Subtle shine on card headers */
+.shine-text {
+  background: linear-gradient(135deg, var(--color-text) 0%, var(--color-text-muted) 80%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Pulse ring for live indicators */
+@keyframes pulseRing {
+  0% { box-shadow: 0 0 0 0 rgba(6, 214, 160, 0.4); }
+  70% { box-shadow: 0 0 0 6px rgba(6, 214, 160, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(6, 214, 160, 0); }
+}
+.pulse-ring {
+  animation: pulseRing 2s ease-out infinite;
+}
+
+/* Divider with gradient fade */
+.divider-gradient {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--color-border), transparent);
+}
+
+/* Smooth focus ring for inputs */
+.focus-ring:focus-within {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px rgba(6, 214, 160, 0.08), 0 0 12px rgba(6, 214, 160, 0.04);
+}
+
+/* Gradient text utility */
+.gradient-text {
+  background: linear-gradient(135deg, #06d6a0 0%, #7c5cfc 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Subtle animated gradient for hero sections */
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+.gradient-bg-animated {
+  background: linear-gradient(-45deg, #0a0a0f, #111118, #14101e, #0e0e16);
+  background-size: 400% 400%;
+  animation: gradientShift 15s ease infinite;
 }
 
 /* Markdown content inside assistant messages */
@@ -61,6 +320,11 @@ body,
   overflow-x: auto;
   margin: 8px 0;
   font-size: 13px;
+  max-width: 100%;
+}
+.markdown-content pre code {
+  word-break: break-all;
+  white-space: pre-wrap;
 }
 .markdown-content code {
   font-family: var(--font-mono);

@@ -5,6 +5,7 @@ import { Section, Field, inputClass } from '../components/form'
 import { useAutoSave, type SaveStatus } from '../hooks/useAutoSave'
 import { PageHeader } from '../components/PageHeader'
 import { PageLoading } from '../components/StateViews'
+import { useLocale } from '../i18n'
 
 const PROVIDER_MODELS: Record<string, { label: string; value: string }[]> = {
   anthropic: [
@@ -31,10 +32,10 @@ const PROVIDERS = [
   { value: 'custom', label: 'Custom' },
 ]
 
-const SDK_FORMATS = [
-  { value: 'openai', label: 'OpenAI Compatible' },
-  { value: 'anthropic', label: 'Anthropic Compatible' },
-  { value: 'google', label: 'Google Compatible' },
+const SDK_FORMATS_BASE = [
+  { value: 'openai', labelKey: 'ai.openai_compat' as const },
+  { value: 'anthropic', labelKey: 'ai.anthropic_compat' as const },
+  { value: 'google', labelKey: 'ai.google_compat' as const },
 ]
 
 /** Detect whether saved config should show as "Custom" in the UI. */
@@ -45,6 +46,7 @@ function detectCustomMode(provider: string, model: string): boolean {
 }
 
 export function AIProviderPage() {
+  const { t } = useLocale()
   const [config, setConfig] = useState<AppConfig | null>(null)
 
   useEffect(() => {
@@ -65,13 +67,13 @@ export function AIProviderPage() {
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <PageHeader title="AI Provider" description="Configure the AI backend, model, and API keys." />
+      <PageHeader title={t('ai.title')} description={t('ai.description')} />
 
       {config ? (
       <div className="flex-1 overflow-y-auto px-4 md:px-6 py-6">
           <div className="max-w-[640px] space-y-5">
             {/* Backend */}
-            <Section id="backend" title="Backend" description="Runtime switch between AI backends. Claude Code calls the local CLI; Vercel AI SDK calls the API directly; Agent SDK uses the programmatic SDK. Changes take effect immediately.">
+            <Section id="backend" title={t('ai.backend')} description={t('ai.backend_desc')}>
               <div className="flex border border-border rounded-lg overflow-hidden">
                 {(['claude-code', 'vercel-ai-sdk', 'agent-sdk'] as const).map((b, i) => (
                   <button
@@ -91,7 +93,7 @@ export function AIProviderPage() {
 
             {/* Model (only for Vercel AI SDK) */}
             {config.aiProvider.backend === 'vercel-ai-sdk' && (
-              <Section id="model" title="Model" description="Provider, model, and API keys for Vercel AI SDK. Changes take effect on the next request (hot-reload).">
+              <Section id="model" title={t('ai.model')} description={t('ai.model_desc')}>
                 <ModelForm aiProvider={config.aiProvider} />
               </Section>
             )}
@@ -107,6 +109,7 @@ export function AIProviderPage() {
 // ==================== Model Form ====================
 
 function ModelForm({ aiProvider }: { aiProvider: AIProviderConfig }) {
+  const { t } = useLocale()
   // Detect whether saved config should render as "Custom" in the UI
   const initCustom = detectCustomMode(aiProvider.provider || 'anthropic', aiProvider.model || '')
   const [uiProvider, setUiProvider] = useState(initCustom ? 'custom' : (aiProvider.provider || 'anthropic'))
@@ -216,7 +219,7 @@ function ModelForm({ aiProvider }: { aiProvider: AIProviderConfig }) {
 
   return (
     <>
-      <Field label="Provider">
+      <Field label={t('ai.provider')}>
         <div className="flex border border-border rounded-lg overflow-hidden">
           {PROVIDERS.map((p, i) => (
             <button
@@ -228,7 +231,7 @@ function ModelForm({ aiProvider }: { aiProvider: AIProviderConfig }) {
                   : 'bg-bg text-text-muted hover:bg-bg-tertiary hover:text-text'
               } ${i > 0 ? 'border-l border-border' : ''}`}
             >
-              {p.label}
+              {p.value === 'custom' ? t('ai.custom') : p.label}
             </button>
           ))}
         </div>
@@ -236,25 +239,25 @@ function ModelForm({ aiProvider }: { aiProvider: AIProviderConfig }) {
 
       {/* Custom mode: API format selector */}
       {isCustomMode && (
-        <Field label="API Format">
+        <Field label={t('ai.api_format')}>
           <select
             className={inputClass}
             value={sdkProvider}
             onChange={(e) => setSdkProvider(e.target.value)}
           >
-            {SDK_FORMATS.map((f) => (
-              <option key={f.value} value={f.value}>{f.label}</option>
+            {SDK_FORMATS_BASE.map((f) => (
+              <option key={f.value} value={f.value}>{t(f.labelKey)}</option>
             ))}
           </select>
           <p className="text-[11px] text-text-muted mt-1">
-            Which API protocol does your endpoint speak?
+            {t('ai.format_desc')}
           </p>
         </Field>
       )}
 
       {/* Standard mode: preset model dropdown */}
       {!isCustomMode && (
-        <Field label="Model">
+        <Field label={t('ai.model')}>
           <select
             className={inputClass}
             value={isCustomModelInStandard || model === '' ? '__custom__' : model}
@@ -263,14 +266,14 @@ function ModelForm({ aiProvider }: { aiProvider: AIProviderConfig }) {
             {presets.map((m) => (
               <option key={m.value} value={m.value}>{m.label}</option>
             ))}
-            <option value="__custom__">Custom...</option>
+            <option value="__custom__">{t('ai.custom')}...</option>
           </select>
         </Field>
       )}
 
       {/* Free-text model ID — always shown in custom mode, or when "Custom..." selected in standard mode */}
       {(isCustomMode || isCustomModelInStandard || (!isCustomMode && model === '')) && (
-        <Field label={isCustomMode ? 'Model ID' : 'Custom Model ID'}>
+        <Field label={isCustomMode ? t('ai.model_id') : t('ai.custom_model_id')}>
           <input
             className={inputClass}
             value={customModel || model}
@@ -280,15 +283,15 @@ function ModelForm({ aiProvider }: { aiProvider: AIProviderConfig }) {
         </Field>
       )}
 
-      <Field label="Base URL">
+      <Field label={t('ai.base_url')}>
         <input
           className={inputClass}
           value={baseUrl}
           onChange={(e) => setBaseUrl(e.target.value)}
-          placeholder={isCustomMode ? 'https://your-relay.example.com/v1' : 'Leave empty for official API'}
+          placeholder={isCustomMode ? 'https://your-relay.example.com/v1' : t('ai.base_url_empty')}
         />
         <p className="text-[11px] text-text-muted mt-1">
-          {isCustomMode ? 'Your relay or proxy endpoint.' : 'Custom endpoint for proxy or relay.'}
+          {isCustomMode ? t('ai.base_url_custom_desc') : t('ai.base_url_desc')}
         </p>
       </Field>
 
@@ -306,9 +309,9 @@ function ModelForm({ aiProvider }: { aiProvider: AIProviderConfig }) {
           >
             <polyline points="9 18 15 12 9 6" />
           </svg>
-          API Keys
+          {t('ai.api_keys')}
           <span className="text-[11px] text-text-muted/60 ml-1">
-            ({Object.values(liveKeyStatus).filter(Boolean).length}/{Object.keys(liveKeyStatus).length} configured)
+            ({Object.values(liveKeyStatus).filter(Boolean).length}/{Object.keys(liveKeyStatus).length} {t('ai.configured')})
           </span>
         </button>
 
@@ -316,25 +319,25 @@ function ModelForm({ aiProvider }: { aiProvider: AIProviderConfig }) {
           <div className="mt-3 space-y-3">
             <p className="text-[11px] text-text-muted">
               {isCustomMode
-                ? 'Enter the API key for your relay. It will be sent under the matching provider header.'
-                : 'Enter API keys below. Leave empty to keep existing value.'}
+                ? t('ai.keys_custom_desc')
+                : t('ai.keys_desc')}
             </p>
             {(isCustomMode
-              ? SDK_FORMATS.filter((f) => f.value === sdkProvider)
+              ? SDK_FORMATS_BASE.filter((f) => f.value === sdkProvider)
               : PROVIDERS.filter((p) => p.value !== 'custom')
             ).map((p) => (
-              <Field key={p.value} label={isCustomMode ? `API Key (${p.label})` : `${p.label} API Key`}>
+              <Field key={p.value} label={isCustomMode ? `API Key (${('labelKey' in p) ? t(p.labelKey) : p.label})` : `${('label' in p) ? p.label : t((p as typeof SDK_FORMATS_BASE[number]).labelKey)} API Key`}>
                 <div className="relative">
                   <input
                     className={inputClass}
                     type="password"
                     value={keys[p.value as keyof typeof keys] ?? ''}
                     onChange={(e) => setKeys((k) => ({ ...k, [p.value]: e.target.value }))}
-                    placeholder={liveKeyStatus[p.value as keyof typeof liveKeyStatus] ? '(configured)' : 'Not configured'}
+                    placeholder={liveKeyStatus[p.value as keyof typeof liveKeyStatus] ? `(${t('ai.configured')})` : t('trading.not_configured')}
                   />
                   {liveKeyStatus[p.value as keyof typeof liveKeyStatus] && (
                     <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-green">
-                      active
+                      {t('ai.active')}
                     </span>
                   )}
                 </div>
@@ -346,7 +349,7 @@ function ModelForm({ aiProvider }: { aiProvider: AIProviderConfig }) {
                 disabled={keySaveStatus === 'saving'}
                 className="bg-user-bubble text-white rounded-lg px-4 py-2 text-[13px] font-medium cursor-pointer transition-opacity hover:opacity-85 disabled:opacity-50"
               >
-                Save Keys
+                {t('ai.save_keys')}
               </button>
               <SaveIndicator status={keySaveStatus} onRetry={handleSaveKeys} />
             </div>

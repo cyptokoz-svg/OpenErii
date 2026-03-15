@@ -17,7 +17,12 @@ import type { Locale, TranslationKey, TranslationKeys } from './types'
 export type { Locale, TranslationKey }
 
 const LOCALES: Record<Locale, TranslationKeys> = { en, zh }
-const STORAGE_KEY = 'alice-locale'
+const STORAGE_KEY = 'erii-locale'
+const HTML_LANG: Record<Locale, string> = { en: 'en', zh: 'zh-CN' }
+
+function syncHtmlLang(locale: Locale) {
+  document.documentElement.lang = HTML_LANG[locale]
+}
 
 function getStoredLocale(): Locale {
   try {
@@ -44,10 +49,15 @@ const LocaleContext = createContext<LocaleContextValue>({
 // ==================== Provider ====================
 
 export function LocaleProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>(getStoredLocale)
+  const [locale, setLocaleState] = useState<Locale>(() => {
+    const l = getStoredLocale()
+    syncHtmlLang(l)
+    return l
+  })
 
   const setLocale = useCallback((l: Locale) => {
     setLocaleState(l)
+    syncHtmlLang(l)
     try { localStorage.setItem(STORAGE_KEY, l) } catch { /* ignore */ }
   }, [])
 

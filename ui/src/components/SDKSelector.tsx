@@ -1,3 +1,5 @@
+import { useLocale } from '../i18n'
+
 export interface SDKOption {
   id: string
   name: string
@@ -31,6 +33,7 @@ function isMulti(props: SDKSelectorProps): props is SDKSelectorMultiProps {
 export function SDKSelector(props: SDKSelectorProps) {
   const { options } = props
   const multi = isMulti(props)
+  const { t } = useLocale()
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -71,14 +74,14 @@ export function SDKSelector(props: SDKSelectorProps) {
             {/* Coming Soon badge */}
             {isDisabled && (
               <span className="absolute top-2.5 right-2.5 text-[10px] font-medium text-text-muted/60 bg-bg-tertiary px-1.5 py-0.5 rounded">
-                Coming Soon
+                {t('sdk.coming_soon')}
               </span>
             )}
 
             {/* Locked badge (always active) */}
             {isLocked && !isDisabled && (
               <span className="absolute top-2.5 right-2.5 text-[10px] font-medium text-accent/70 bg-accent/10 px-1.5 py-0.5 rounded">
-                Always On
+                {t('sdk.always_on')}
               </span>
             )}
 

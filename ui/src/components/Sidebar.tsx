@@ -1,8 +1,11 @@
-import { type ReactNode } from 'react'
+import { type ReactNode, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { type Page, ROUTES } from '../App'
 import { LanguageSwitcher } from './LanguageSwitcher'
 import { useLocale, type TranslationKey } from '../i18n'
+import { useTheme, type ThemeMode } from '../hooks/useTheme'
+
+const COLLAPSED_KEY = 'oa-sidebar-collapsed'
 
 interface SidebarProps {
   sseConnected: boolean
@@ -40,7 +43,14 @@ interface NavGroup {
 type NavItem = NavLeaf | NavGroup
 const isGroup = (item: NavItem): item is NavGroup => 'children' in item
 
+// Nav items grouped by function:
+//   1. Chat (primary)
+//   2. Trading & Analysis: Portfolio, Trading, Atlas, Backtest
+//   3. Monitoring: Events, Heartbeat
+//   4. System: Data Sources, Connectors, Tools, AI Provider, Settings, Dev
+
 const NAV_ITEMS: NavItem[] = [
+  // ── Primary ──
   {
     page: 'chat', i18nKey: 'nav.chat' as const,
     label: 'Chat',
@@ -50,6 +60,7 @@ const NAV_ITEMS: NavItem[] = [
       </svg>
     ),
   },
+  // ── Trading & Analysis ──
   {
     page: 'portfolio', i18nKey: 'nav.portfolio' as const,
     label: 'Portfolio',
@@ -62,6 +73,41 @@ const NAV_ITEMS: NavItem[] = [
       </svg>
     ),
   },
+  {
+    page: 'trading' as const, i18nKey: 'nav.trading' as const,
+    label: 'Trading',
+    icon: (active: boolean) => (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M2 20h20" />
+        <path d="M5 17V10" /><path d="M5 7V4" /><path d="M3 10h4" /><path d="M3 7h4" />
+        <path d="M10 17V13" /><path d="M10 10V6" /><path d="M8 13h4" /><path d="M8 10h4" />
+        <path d="M15 17V11" /><path d="M15 8V4" /><path d="M13 11h4" /><path d="M13 8h4" />
+        <path d="M20 17V14" /><path d="M20 11V8" /><path d="M18 14h4" /><path d="M18 11h4" />
+      </svg>
+    ),
+  },
+  {
+    page: 'atlas' as const, i18nKey: 'nav.atlas' as const,
+    label: 'Atlas',
+    icon: (active: boolean) => (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" />
+        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+        <path d="M2 12h20" />
+      </svg>
+    ),
+  },
+  {
+    page: 'backtest' as const, i18nKey: 'nav.backtest' as const,
+    label: 'Backtest',
+    icon: (active: boolean) => (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 3v18h18" />
+        <path d="M7 16l4-8 4 4 4-6" />
+      </svg>
+    ),
+  },
+  // ── Monitoring ──
   {
     page: 'events', i18nKey: 'nav.events' as const,
     label: 'Events',
@@ -80,6 +126,7 @@ const NAV_ITEMS: NavItem[] = [
       </svg>
     ),
   },
+  // ── System ──
   {
     page: 'data-sources', i18nKey: 'nav.data_sources' as const,
     label: 'Data Sources',
@@ -108,30 +155,6 @@ const NAV_ITEMS: NavItem[] = [
     icon: (active) => (
       <svg width="18" height="18" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
-      </svg>
-    ),
-  },
-  {
-    page: 'trading' as const, i18nKey: 'nav.trading' as const,
-    label: 'Trading',
-    icon: (active: boolean) => (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M2 20h20" />
-        <path d="M5 17V10" /><path d="M5 7V4" /><path d="M3 10h4" /><path d="M3 7h4" />
-        <path d="M10 17V13" /><path d="M10 10V6" /><path d="M8 13h4" /><path d="M8 10h4" />
-        <path d="M15 17V11" /><path d="M15 8V4" /><path d="M13 11h4" /><path d="M13 8h4" />
-        <path d="M20 17V14" /><path d="M20 11V8" /><path d="M18 14h4" /><path d="M18 11h4" />
-      </svg>
-    ),
-  },
-  {
-    page: 'atlas' as const, i18nKey: 'nav.atlas' as const,
-    label: 'Atlas Research',
-    icon: (active: boolean) => (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="10" />
-        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-        <path d="M2 12h20" />
       </svg>
     ),
   },
@@ -181,10 +204,26 @@ function pathToPage(pathname: string): Page | null {
 
 // ==================== Sidebar ====================
 
+const THEME_ICONS: Record<ThemeMode, string> = { light: '☀️', dark: '🌙', auto: '🌗' }
+const THEME_CYCLE: ThemeMode[] = ['auto', 'light', 'dark']
+
 export function Sidebar({ sseConnected, open, onClose }: SidebarProps) {
   const location = useLocation()
   const currentPage = pathToPage(location.pathname)
   const { t } = useLocale()
+  const { mode: themeMode, setMode: setThemeMode } = useTheme()
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === 'true')
+
+  const toggleCollapsed = () => {
+    const next = !collapsed
+    setCollapsed(next)
+    localStorage.setItem(COLLAPSED_KEY, String(next))
+  }
+
+  const cycleTheme = () => {
+    const idx = THEME_CYCLE.indexOf(themeMode)
+    setThemeMode(THEME_CYCLE[(idx + 1) % THEME_CYCLE.length])
+  }
 
   /** Resolve label: use i18n key if available, otherwise fall back to static label */
   const resolveLabel = (label: string, i18nKey?: TranslationKey) =>
@@ -194,36 +233,111 @@ export function Sidebar({ sseConnected, open, onClose }: SidebarProps) {
     <>
       {/* Backdrop — mobile only */}
       <div
-        className={`fixed inset-0 bg-black/50 z-40 md:hidden transition-opacity duration-200 ${
+        className={`fixed inset-0 bg-black/50 z-40 md:hidden transition-opacity duration-300 ${
           open ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
         onClick={onClose}
+        onTouchStart={(e) => {
+          const startX = e.touches[0].clientX;
+          const el = e.currentTarget;
+          const onMove = (ev: TouchEvent) => {
+            const dx = ev.touches[0].clientX - startX;
+            if (dx < -60) { onClose(); el.removeEventListener('touchmove', onMove); }
+          };
+          el.addEventListener('touchmove', onMove, { passive: true });
+          el.addEventListener('touchend', () => el.removeEventListener('touchmove', onMove), { once: true });
+        }}
       />
 
       {/* Sidebar */}
       <aside
         className={`
-          w-[220px] h-full flex flex-col bg-bg-secondary border-r border-border shrink-0
-          fixed z-50 top-0 left-0 transition-transform duration-200
+          ${collapsed ? 'w-[60px]' : 'w-[220px]'} h-full flex flex-col shrink-0
+          fixed z-50 top-0 left-0 transition-all duration-300 ease-out
           ${open ? 'translate-x-0' : '-translate-x-full'}
-          md:static md:translate-x-0 md:z-auto md:transition-none
+          md:static md:translate-x-0 md:z-auto
         `}
+        style={{
+          background: 'linear-gradient(180deg, var(--color-sidebar-top) 0%, var(--color-sidebar-bottom) 100%)',
+          borderRight: '1px solid var(--color-border)',
+        }}
       >
-        {/* Branding */}
-        <div className="px-5 py-4 flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg bg-accent/15 flex items-center justify-center text-accent">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
+        {/* Branding + collapse toggle */}
+        <div className={`py-4 flex items-center ${collapsed ? 'px-2 justify-center' : 'px-5 gap-2.5'}`}>
+          <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, rgba(244,114,182,0.15) 0%, rgba(192,132,252,0.15) 100%)' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="url(#brandGrad)" stroke="none">
+              <defs>
+                <linearGradient id="brandGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#f472b6" />
+                  <stop offset="100%" stopColor="#c084fc" />
+                </linearGradient>
+              </defs>
+              <path d="M12 12 C8 9,7 5,10 2.5 Q11 1,12 3.5 Q13 1,14 2.5 C17 5,16 9,12 12Z" />
+              <path d="M12 12 C8 9,7 5,10 2.5 Q11 1,12 3.5 Q13 1,14 2.5 C17 5,16 9,12 12Z" transform="rotate(72 12 12)" />
+              <path d="M12 12 C8 9,7 5,10 2.5 Q11 1,12 3.5 Q13 1,14 2.5 C17 5,16 9,12 12Z" transform="rotate(144 12 12)" />
+              <path d="M12 12 C8 9,7 5,10 2.5 Q11 1,12 3.5 Q13 1,14 2.5 C17 5,16 9,12 12Z" transform="rotate(216 12 12)" />
+              <path d="M12 12 C8 9,7 5,10 2.5 Q11 1,12 3.5 Q13 1,14 2.5 C17 5,16 9,12 12Z" transform="rotate(288 12 12)" />
+              <circle cx="12" cy="12" r="2.5" opacity="0.4" />
+              <circle cx="10.5" cy="10" r="0.6" opacity="0.6" />
+              <circle cx="13.5" cy="10" r="0.6" opacity="0.6" />
+              <circle cx="12" cy="8.5" r="0.6" opacity="0.6" />
+              <circle cx="10.8" cy="12.8" r="0.6" opacity="0.6" />
+              <circle cx="13.2" cy="12.8" r="0.6" opacity="0.6" />
             </svg>
           </div>
-          <h1 className="text-[15px] font-semibold text-text">Open Alice</h1>
+          {!collapsed && <h1 className="text-[15px] font-semibold gradient-text flex-1">OpenErii</h1>}
+          {!collapsed && (
+            <button
+              onClick={toggleCollapsed}
+              className="hidden md:flex items-center justify-center w-6 h-6 rounded-md text-text-muted hover:text-text hover:bg-bg-tertiary/40 transition-colors"
+              title={t('sidebar.collapse')}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="11 17 6 12 11 7" />
+                <polyline points="18 17 13 12 18 7" />
+              </svg>
+            </button>
+          )}
         </div>
 
+        {/* Expand button — only when collapsed */}
+        {collapsed && (
+          <div className="hidden md:flex justify-center pb-2">
+            <button
+              onClick={toggleCollapsed}
+              className="flex items-center justify-center w-8 h-8 rounded-md text-text-muted hover:text-text hover:bg-bg-tertiary/40 transition-colors"
+              title={t('sidebar.expand')}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="13 17 18 12 13 7" />
+                <polyline points="6 17 11 12 6 7" />
+              </svg>
+            </button>
+          </div>
+        )}
+
         {/* Navigation */}
-        <nav className="flex-1 flex flex-col gap-0.5 px-2">
+        <nav className={`flex-1 flex flex-col gap-0.5 ${collapsed ? 'px-1 items-center' : 'px-2'} overflow-y-auto overflow-x-hidden`}>
           {NAV_ITEMS.map((item) => {
             if (isGroup(item)) {
               const expanded = location.pathname.startsWith(`/${item.prefix}`)
+              if (collapsed) {
+                // Collapsed: show only parent icon
+                return (
+                  <Link
+                    key={item.prefix}
+                    to={ROUTES[item.children[0].page]}
+                    onClick={onClose}
+                    className={`relative flex items-center justify-center w-10 h-10 rounded-lg transition-colors ${
+                      expanded ? 'text-text bg-bg-tertiary/60 nav-active-glow' : 'text-text-muted hover:text-text hover:bg-bg-tertiary/40'
+                    }`}
+                    title={resolveLabel(item.label, 'i18nKey' in item ? (item as unknown as NavLeaf).i18nKey : undefined)}
+                  >
+                    {expanded && <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full" style={{ background: 'linear-gradient(180deg, #06d6a0, #7c5cfc)' }} />}
+                    <span className="flex items-center justify-center w-5 h-5">{item.icon(expanded)}</span>
+                  </Link>
+                )
+              }
               return (
                 <div key={item.prefix}>
                   {/* Group parent */}
@@ -236,7 +350,7 @@ export function Sidebar({ sseConnected, open, onClose }: SidebarProps) {
                         : 'text-text-muted hover:text-text hover:bg-bg-tertiary/40'
                     }`}
                   >
-                    {expanded && <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-accent" />}
+                    {expanded && <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full" style={{ background: 'linear-gradient(180deg, #06d6a0, #7c5cfc)' }} />}
                     <span className="flex items-center justify-center w-5 h-5">{item.icon(expanded)}</span>
                     <span className="flex-1">{resolveLabel(item.label, 'i18nKey' in item ? (item as unknown as NavLeaf).i18nKey : undefined)}</span>
                     <Chevron expanded={expanded} />
@@ -261,7 +375,7 @@ export function Sidebar({ sseConnected, open, onClose }: SidebarProps) {
                               : 'text-text-muted hover:text-text hover:bg-bg-tertiary/40'
                           }`}
                         >
-                          {isActive && <span className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r-full bg-accent" />}
+                          {isActive && <span className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r-full" style={{ background: 'linear-gradient(180deg, #06d6a0, #7c5cfc)' }} />}
                           {resolveLabel(child.label, child.i18nKey)}
                         </Link>
                       )
@@ -273,6 +387,22 @@ export function Sidebar({ sseConnected, open, onClose }: SidebarProps) {
 
             // Leaf item
             const isActive = currentPage === item.page
+            if (collapsed) {
+              return (
+                <Link
+                  key={item.page}
+                  to={ROUTES[item.page]}
+                  onClick={onClose}
+                  className={`relative flex items-center justify-center w-10 h-10 rounded-lg transition-colors ${
+                    isActive ? 'bg-bg-tertiary/60 text-text nav-active-glow' : 'text-text-muted hover:text-text hover:bg-bg-tertiary/40'
+                  }`}
+                  title={resolveLabel(item.label, (item as NavLeaf).i18nKey)}
+                >
+                  {isActive && <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full" style={{ background: 'linear-gradient(180deg, #06d6a0, #7c5cfc)' }} />}
+                  <span className="flex items-center justify-center w-5 h-5">{item.icon(isActive)}</span>
+                </Link>
+              )
+            }
             return (
               <Link
                 key={item.page}
@@ -284,7 +414,7 @@ export function Sidebar({ sseConnected, open, onClose }: SidebarProps) {
                     : 'text-text-muted hover:text-text hover:bg-bg-tertiary/40'
                 }`}
               >
-                {isActive && <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-accent" />}
+                {isActive && <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full" style={{ background: 'linear-gradient(180deg, #06d6a0, #7c5cfc)' }} />}
                 <span className="flex items-center justify-center w-5 h-5">{item.icon(isActive)}</span>
                 {resolveLabel(item.label, (item as NavLeaf).i18nKey)}
               </Link>
@@ -292,12 +422,12 @@ export function Sidebar({ sseConnected, open, onClose }: SidebarProps) {
           })}
         </nav>
 
-        {/* SSE Connection Status */}
-        <div className="mt-auto px-4 py-3 border-t border-border">
-          <div className="flex items-center gap-2 text-[12px] text-text-muted">
-            <span className="relative flex h-2 w-2">
+        {/* SSE Connection Status + Footer */}
+        <div className={`mt-auto py-3 ${collapsed ? 'px-2' : 'px-4'}`} style={{ borderTop: '1px solid var(--color-border)' }}>
+          <div className={`flex items-center ${collapsed ? 'justify-center' : 'gap-2'} text-[12px] text-text-muted`}>
+            <span className="relative flex h-2 w-2 shrink-0" title={sseConnected ? t('common.connected') : t('common.disconnected')}>
               {sseConnected ? (
-                <span className="w-2 h-2 rounded-full bg-green" />
+                <span className="w-2 h-2 rounded-full bg-green pulse-ring" />
               ) : (
                 <>
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red/60" />
@@ -305,11 +435,31 @@ export function Sidebar({ sseConnected, open, onClose }: SidebarProps) {
                 </>
               )}
             </span>
-            <span>{sseConnected ? t('common.connected') : t('common.disconnected')}</span>
+            {!collapsed && <span>{sseConnected ? t('common.connected') : t('common.disconnected')}</span>}
           </div>
-          <div className="mt-2 flex justify-end">
-            <LanguageSwitcher />
-          </div>
+          {collapsed ? (
+            <div className="mt-2 flex flex-col items-center gap-1">
+              <button
+                onClick={cycleTheme}
+                className="flex items-center justify-center w-8 h-8 rounded-md text-text-muted hover:text-text hover:bg-bg-tertiary/40 transition-colors"
+                title={`Theme: ${themeMode}`}
+              >
+                <span className="text-[14px]">{THEME_ICONS[themeMode]}</span>
+              </button>
+            </div>
+          ) : (
+            <div className="mt-2 flex items-center justify-between">
+              <button
+                onClick={cycleTheme}
+                className="flex items-center gap-1.5 text-[11px] text-text-muted hover:text-text transition-colors px-2 py-1 rounded-md hover:bg-bg-tertiary/40"
+                title={`Theme: ${themeMode}`}
+              >
+                <span>{THEME_ICONS[themeMode]}</span>
+                <span className="uppercase tracking-wide">{themeMode}</span>
+              </button>
+              <LanguageSwitcher />
+            </div>
+          )}
         </div>
       </aside>
     </>

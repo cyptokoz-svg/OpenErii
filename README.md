@@ -223,10 +223,11 @@ data/
 
 ## Roadmap
 
-- [ ] **Tool confirmation** — sensitive tools (order placement, cancellation) require explicit user confirmation before execution
-- [ ] **IBKR adapter** — Interactive Brokers integration
-- [ ] **Account snapshot & analytics** — unified P&L and historical performance tracking
-- [ ] **More research departments** — quantitative, technical analysis, on-chain data
+- [ ] **More research departments** — crypto, equities, on-chain data analysis
+- [ ] **Backtest Mode B** — position-level simulation with OHLCV bar-by-bar entry/exit using CIO envelope parameters
+- [ ] **Live signal tracking** — automated forward-return scoring with real-time PnL attribution
+- [ ] **Multi-department synthesis** — cross-department signal aggregation for portfolio-level decisions
+- [ ] **Agent marketplace** — share and import evolved agent prompts across departments
 
 ## Acknowledgments
 

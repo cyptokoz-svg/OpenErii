@@ -7,7 +7,7 @@
 
 import type { EngineContext } from '../../core/types.js'
 import type { SSEClient } from '../../connectors/web/routes/chat.js'
-import type { GenerateRouter } from '../../core/ai-provider.js'
+import type { GenerateRouter } from '../../core/ai-provider-manager.js'
 import { loadAtlasConfig, loadDepartmentAgents } from './config.js'
 import { AtlasPipeline, type PipelineConfig } from './pipeline.js'
 import { DataBridge, type DataBridgeDeps } from './data-bridge.js'

@@ -9,6 +9,29 @@ import { readFile, writeFile, mkdir } from 'fs/promises'
 import { resolve, dirname } from 'path'
 import type { AtlasConfig, Direction, AgentScore, SignalRecord } from './types.js'
 
+// ==================== Ticker Normalization ====================
+
+/** Map natural-language or shorthand tickers to Yahoo Finance symbols. */
+const TICKER_MAP: Record<string, string> = {
+  'crude_oil_wti': 'CL=F', 'crude_oil_brent': 'BZ=F', 'natural_gas': 'NG=F',
+  'heating_oil': 'HO=F', 'gasoline': 'RB=F',
+  'copper_hg': 'HG=F', 'aluminum_al': 'ALI=F', 'zinc_zn': 'ZN=F',
+  'nickel_ni': 'NI=F', 'tin_sn': 'SN=F', 'iron ore': 'TIO=F',
+  'wheat_zw': 'ZW=F', 'corn_zc': 'ZC=F', 'soybean_zs': 'ZS=F', 'grains': 'ZW=F',
+  'coffee_kc': 'KC=F', 'sugar_sb': 'SB=F', 'cotton_ct': 'CT=F',
+  'live_cattle_le': 'LE=F', 'feeder_cattle_gf': 'GF=F', 'lean_hogs_he': 'HE=F',
+  'coal': 'MTF=F',
+  // Shorthand without =F
+  'CL': 'CL=F', 'GC': 'GC=F', 'SI': 'SI=F', 'NG': 'NG=F',
+  'HG': 'HG=F', 'LE': 'LE=F', 'GF': 'GF=F', 'HE': 'HE=F',
+  'ZS': 'ZS=F', 'ZL': 'ZL=F', 'ZW': 'ZW=F', 'ZC': 'ZC=F',
+  'JO': 'JO',
+}
+
+function normalizeTicker(ticker: string): string {
+  return TICKER_MAP[ticker] ?? ticker
+}
+
 // ==================== Constants ====================
 
 interface DarwinianConfig {
@@ -102,17 +125,26 @@ export class Scorecard {
    */
   async scorePastSignals(
     getReturn: (ticker: string, date: string, days: number) => Promise<number | null>,
+    referenceDate?: string,
   ): Promise<number> {
     let scored = 0
     const forwardDays = 5
+
+    // Reference date for minimum elapsed check (backtest uses simulated date)
+    const refMs = referenceDate ? new Date(referenceDate).getTime() : Date.now()
 
     for (const [agentName, records] of Object.entries(this.signals)) {
       for (const record of records) {
         if (record.scored) continue
         if (record.targets.length === 0) continue
 
-        // Use first target for scoring
-        const ticker = record.targets[0]
+        // Only score signals that are at least forwardDays old
+        const signalMs = new Date(record.date).getTime()
+        const elapsedDays = (refMs - signalMs) / (86400 * 1000)
+        if (elapsedDays < forwardDays) continue
+
+        // Use first target for scoring (normalize to Yahoo Finance symbol)
+        const ticker = normalizeTicker(record.targets[0])
         const forwardReturn = await getReturn(ticker, record.date, forwardDays)
         if (forwardReturn === null) continue
 
@@ -125,7 +157,7 @@ export class Scorecard {
 
     // Update weights based on new scores
     if (scored > 0) {
-      this.updateWeights()
+      this.updateWeights(referenceDate)
     }
 
     return scored
@@ -133,13 +165,13 @@ export class Scorecard {
 
   // ==================== Weight Update ====================
 
-  private updateWeights(): void {
+  private updateWeights(referenceDate?: string): void {
     for (const [agentName, records] of Object.entries(this.signals)) {
       const scoredRecords = records.filter((r) => r.scored && r.forward_return !== undefined)
       if (scoredRecords.length < 3) continue // Need minimum history
 
-      // Filter to lookback window
-      const cutoff = new Date()
+      // Filter to lookback window (use referenceDate for backtest, otherwise today)
+      const cutoff = referenceDate ? new Date(referenceDate) : new Date()
       cutoff.setDate(cutoff.getDate() - this.darwinian.sharpe_lookback_days)
       const cutoffStr = cutoff.toISOString().slice(0, 10)
       const recent = scoredRecords.filter((r) => r.date >= cutoffStr)

@@ -84,19 +84,25 @@ interface KnowledgeStats {
 export class KnowledgeGraph {
   private root: string
   private staleDays: number
+  /** Optional mirror paths — notes are duplicated here (e.g. external Obsidian vault) */
+  private mirrors: string[]
 
-  constructor(vaultPath: string, staleDays: number = 30) {
+  constructor(vaultPath: string, staleDays: number = 30, mirrors: string[] = []) {
     this.root = vaultPath
     this.staleDays = staleDays
+    this.mirrors = mirrors
   }
 
   // ==================== Init ====================
 
-  /** Ensure vault directory structure exists. */
+  /** Ensure vault directory structure exists (primary + mirrors). */
   async init(): Promise<void> {
     const dirs = ['agents', 'commodities', 'events', 'seasonal', 'archive']
-    for (const dir of dirs) {
-      await mkdir(join(this.root, dir), { recursive: true })
+    const roots = [this.root, ...this.mirrors]
+    for (const root of roots) {
+      for (const dir of dirs) {
+        await mkdir(join(root, dir), { recursive: true })
+      }
     }
   }
 
@@ -124,11 +130,28 @@ export class KnowledgeGraph {
       const noteTags = Array.isArray(fm.tags) ? fm.tags : fm.tags ? [fm.tags] : []
       const stem = basename(filePath, '.md').toLowerCase()
 
-      const matched = tags.some(
-        (tag) =>
-          noteTags.some((t) => (typeof t === 'string' ? t : '').toLowerCase() === tag.toLowerCase()) ||
-          stem.includes(tag.toLowerCase()),
+      // Extract wikilinks from content: [[Target]] or [[Target|alias]]
+      const wikilinks = [...content.matchAll(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g)].map((m) =>
+        m[1].toLowerCase(),
       )
+      const bodyLower = content.toLowerCase()
+      const author = ((fm.author ?? fm.agent ?? '') as string).toLowerCase()
+
+      const matched = tags.some((tag) => {
+        const t = tag.toLowerCase()
+        return (
+          // 1. Frontmatter tags (exact)
+          noteTags.some((nt) => (typeof nt === 'string' ? nt : '').toLowerCase() === t) ||
+          // 2. Filename stem
+          stem.includes(t) ||
+          // 3. Content body (substring)
+          bodyLower.includes(t) ||
+          // 4. Wikilinks
+          wikilinks.some((wl) => wl.includes(t) || t.includes(wl)) ||
+          // 5. Author / agent
+          author.includes(t)
+        )
+      })
 
       if (matched) {
         results.push({
@@ -205,7 +228,7 @@ export class KnowledgeGraph {
 
   // ==================== Write ====================
 
-  /** Write or append a note to the vault. */
+  /** Write or append a note to the vault (primary + mirrors). */
   async writeNote(
     filename: string,
     content: string,
@@ -219,12 +242,33 @@ export class KnowledgeGraph {
     filename = basename(filename)
     if (filename.includes('..')) filename = filename.replace(/\.\./g, '')
 
-    const categoryDir = join(this.root, category)
-    await mkdir(categoryDir, { recursive: true })
-    const filePath = join(categoryDir, filename)
-
     const now = new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC'
     const linkedContent = injectLinks(content)
+
+    // Write to primary vault
+    await this.writeToVault(this.root, filename, linkedContent, category, tags, agentName, noteType, now)
+
+    // Mirror to external vaults (fire-and-forget, don't block on failure)
+    for (const mirror of this.mirrors) {
+      this.writeToVault(mirror, filename, linkedContent, category, tags, agentName, noteType, now)
+        .catch((err) => console.warn(`atlas: mirror write failed (${mirror}):`, err))
+    }
+  }
+
+  /** Write a note to a specific vault root. */
+  private async writeToVault(
+    vaultRoot: string,
+    filename: string,
+    linkedContent: string,
+    category: string,
+    tags: string[] | null,
+    agentName: string,
+    noteType: string,
+    now: string,
+  ): Promise<void> {
+    const categoryDir = join(vaultRoot, category)
+    await mkdir(categoryDir, { recursive: true })
+    const filePath = join(categoryDir, filename)
 
     try {
       const existing = await readFile(filePath, 'utf-8')

@@ -34,18 +34,31 @@ export class AutoResearch {
   private llmCall: LLMCallFn
   private log: EvolutionEntry[] = []
   private logFile: string
+  /** Override "now" for backtest — uses simulated date instead of Date.now() */
+  private referenceDate?: string
+
+  /** Override prompt directory for backtest isolation */
+  private promptDir?: string
 
   constructor(
     departmentId: string,
     config: AtlasConfig,
     scorecard: Scorecard,
     llmCall: LLMCallFn,
+    opts?: { logFile?: string; referenceDate?: string; promptDir?: string },
   ) {
     this.departmentId = departmentId
     this.config = config
     this.scorecard = scorecard
     this.llmCall = llmCall
-    this.logFile = resolve('data/atlas', departmentId, 'state', 'evolution_log.json')
+    this.logFile = opts?.logFile ?? resolve('data/atlas', departmentId, 'state', 'evolution_log.json')
+    this.referenceDate = opts?.referenceDate
+    this.promptDir = opts?.promptDir
+  }
+
+  /** Set the reference date (for backtest, called before each simulated day) */
+  setReferenceDate(date: string): void {
+    this.referenceDate = date
   }
 
   // ==================== Load / Save ====================
@@ -108,7 +121,7 @@ export class AutoResearch {
     const sharpeAfter = agentScore?.sharpe ?? 0
 
     entry.sharpe_after = sharpeAfter
-    entry.completed_at = new Date().toISOString()
+    entry.completed_at = this.nowISO()
 
     if (sharpeAfter > entry.sharpe_before) {
       // Improvement → keep
@@ -196,7 +209,7 @@ export class AutoResearch {
       old_prompt_hash: currentHash,
       new_prompt_hash: this.hash(newPrompt),
       reason: `Worst Sharpe: ${worst.sharpe.toFixed(2)}, Win rate: ${worst.win_rate}%`,
-      started_at: new Date().toISOString(),
+      started_at: this.nowISO(),
       status: 'testing',
       sharpe_before: worst.sharpe,
     }
@@ -271,21 +284,45 @@ ${currentPrompt}
   }
 
   private daysSince(dateStr: string): number {
-    return (Date.now() - new Date(dateStr).getTime()) / (24 * 60 * 60 * 1000)
+    const now = this.referenceDate ? new Date(this.referenceDate).getTime() : Date.now()
+    return (now - new Date(dateStr).getTime()) / (24 * 60 * 60 * 1000)
+  }
+
+  private nowISO(): string {
+    return this.referenceDate
+      ? new Date(this.referenceDate).toISOString()
+      : new Date().toISOString()
   }
 
   private hash(content: string): string {
     return createHash('sha256').update(content).digest('hex').slice(0, 12)
   }
 
-  /** Snapshot a file change for audit trail. No-op if git is not configured. */
-  private async gitSnapshot(_filePath: string, _message: string): Promise<void> {
-    // TODO: integrate with git for prompt version control
-    // For now, file backups (.backup) provide the rollback mechanism
+  /** Snapshot a file change for audit trail. No-op if git is not configured or in backtest mode. */
+  private async gitSnapshot(filePath: string, message: string): Promise<void> {
+    // Skip git operations during backtest — isolated prompt dir is not a git repo
+    if (this.promptDir) return
+    try {
+      // Use git rev-parse to find the repo root reliably
+      const { stdout } = await execFileAsync(
+        'git', ['rev-parse', '--show-toplevel'],
+        { cwd: dirname(filePath) },
+      )
+      const repoRoot = stdout.trim()
+      await execFileAsync('git', ['add', filePath], { cwd: repoRoot })
+      await execFileAsync(
+        'git', ['commit', '-m', `[atlas-evolve] ${message}`, '--', filePath],
+        { cwd: repoRoot },
+      )
+    } catch {
+      // Git not available or nothing to commit — silently continue
+      // .backup files still provide the rollback mechanism
+    }
   }
 
   private async findPromptFile(agentName: string): Promise<string | null> {
-    const dataDir = getDepartmentDataDir(this.departmentId)
+    // When promptDir is set (backtest), use isolated prompt copies
+    const dataDir = this.promptDir ?? getDepartmentDataDir(this.departmentId)
 
     // First: try to find prompt_file from agent config (authoritative source)
     try {

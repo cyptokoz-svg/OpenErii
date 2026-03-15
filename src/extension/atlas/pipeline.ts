@@ -18,6 +18,7 @@ import type {
   PipelineCallbacks,
 } from './types.js'
 import { LAYERS } from './types.js'
+import { resolve } from 'path'
 import { loadDepartmentAgents, getKnowledgeVaultPath } from './config.js'
 import { AgentRunner, type LLMCallFn, type DataFetchFn } from './runner.js'
 import { synthesizeLayer } from './synthesizer.js'
@@ -33,6 +34,10 @@ export interface PipelineConfig {
   dataFetch: DataFetchFn
   shouldRunAgent: (agent: AgentConfig, departmentId: string) => Promise<boolean>
   callbacks?: PipelineCallbacks
+  /** Fetch forward return for a ticker from a given date. Used for scoring past signals. */
+  fetchReturn?: (ticker: string, date: string, days: number) => Promise<number | null>
+  /** Override prompt directory (backtest isolation — agents read/evolve prompts here instead of production) */
+  promptDir?: string
 }
 
 // ==================== Pipeline ====================
@@ -50,12 +55,17 @@ export class AtlasPipeline {
   private freshnessTrackers: Map<string, FreshnessTracker> = new Map()
   private lastRunTimestamps: Map<string, string> = new Map()
 
+  private fetchReturn?: (ticker: string, date: string, days: number) => Promise<number | null>
+  private promptDir?: string
+
   constructor(config: PipelineConfig) {
     this.config = config.atlasConfig
     this.llmCall = config.llmCall
     this.dataFetch = config.dataFetch
     this.shouldRunAgent = config.shouldRunAgent
     this.callbacks = config.callbacks ?? {}
+    this.fetchReturn = config.fetchReturn
+    this.promptDir = config.promptDir
   }
 
   /** Get or create scorecard for a department. */
@@ -72,7 +82,12 @@ export class AtlasPipeline {
   getKnowledgeGraph(departmentId: string): KnowledgeGraph {
     let kg = this.knowledgeGraphs.get(departmentId)
     if (!kg) {
-      kg = new KnowledgeGraph(getKnowledgeVaultPath(departmentId))
+      const mirrors: string[] = []
+      if (this.config.obsidian_vault_path) {
+        // Mirror to external Obsidian vault under Atlas/{departmentId}/
+        mirrors.push(resolve(this.config.obsidian_vault_path, 'Atlas', departmentId))
+      }
+      kg = new KnowledgeGraph(getKnowledgeVaultPath(departmentId), 30, mirrors)
       this.knowledgeGraphs.set(departmentId, kg)
     }
     return kg
@@ -95,11 +110,11 @@ export class AtlasPipeline {
     const { department, agents, kg, scorecard, weights, runner, freshness } = await this.preparePipeline(opts)
 
     const { layerResults, allEnvelopes, skippedAgents, totalCalls, skippedCalls } =
-      await this.executeLayers(agents, runner, weights, department.id, opts.skip_layers, freshness)
+      await this.executeLayers(agents, runner, weights, department.id, opts.skip_layers, freshness, opts.abortSignal)
 
     const report = await this.buildReport(
       opts.department, layerResults, allEnvelopes, skippedAgents,
-      totalCalls, skippedCalls, scorecard,
+      totalCalls, skippedCalls, scorecard, opts.dateOverride,
     )
 
     this.lastRunTimestamps.set(opts.department, report.timestamp)
@@ -147,6 +162,7 @@ export class AtlasPipeline {
       knowledgeGraph: kg,
       llmCall: this.llmCall,
       dataFetch: this.dataFetch,
+      promptDir: this.promptDir,
     })
 
     return { department, agents, kg, scorecard, weights, runner, freshness }
@@ -170,6 +186,7 @@ export class AtlasPipeline {
     departmentId: string,
     skipLayersList?: Layer[],
     freshness?: FreshnessTracker,
+    abortSignal?: AbortSignal,
   ) {
     const skipLayers = new Set(skipLayersList ?? [])
     const layerResults: Partial<Record<Layer, LayerSynthesis>> = {}
@@ -223,6 +240,7 @@ export class AtlasPipeline {
       knowledgeGraph: this.getKnowledgeGraph(departmentId),
       llmCall: this.llmCall,
       dataFetch: cachedDataFetch,
+      promptDir: this.promptDir,
     })
 
     // Prefetch first layer's data before starting
@@ -232,6 +250,12 @@ export class AtlasPipeline {
     }
 
     for (let i = 0; i < layersToRun.length; i++) {
+      // Check abort signal between layers
+      if (abortSignal?.aborted) {
+        console.log(`atlas: pipeline aborted before ${layersToRun[i]}`)
+        break
+      }
+
       const layer = layersToRun[i]
       const layerAgents = layerAgentsMap.get(layer)!
 
@@ -245,7 +269,7 @@ export class AtlasPipeline {
       // Run current layer (with envelope caching + L4 staged injection)
       const skippedBefore = skippedAgents.length
       const envelopes = await this.runLayer(
-        layer, layerAgents, cachedRunner, weights, departmentId, upstreamContext, skippedAgents, freshness,
+        layer, layerAgents, cachedRunner, weights, departmentId, upstreamContext, skippedAgents, freshness, dataCache, abortSignal,
       )
 
       totalCalls += layerAgents.length
@@ -274,14 +298,29 @@ export class AtlasPipeline {
     totalCalls: number,
     skippedCalls: number,
     scorecard: Scorecard,
+    dateOverride?: string,
   ): Promise<AtlasReport> {
-    // Record signals
+    // Record signals (use dateOverride for backtest, otherwise today)
+    const signalDate = dateOverride ?? new Date().toISOString().slice(0, 10)
     for (const env of allEnvelopes) {
       scorecard.recordSignal(
         env.agent, env.signal.direction, env.signal.conviction,
-        env.signal.targets, new Date().toISOString().slice(0, 10),
+        env.signal.targets, signalDate,
       )
     }
+
+    // Score past signals: look up actual market returns for signals from 5+ days ago
+    if (this.fetchReturn) {
+      try {
+        const scored = await scorecard.scorePastSignals(this.fetchReturn, dateOverride)
+        if (scored > 0) {
+          console.log(`atlas: scored ${scored} past signals with forward returns → weights updated`)
+        }
+      } catch (err) {
+        console.warn('atlas: failed to score past signals:', err)
+      }
+    }
+
     await scorecard.save()
 
     const agentScores = scorecard.getAllScores()
@@ -328,6 +367,8 @@ export class AtlasPipeline {
     upstreamContext: LayerSynthesis[],
     skippedAgents: string[],
     freshness?: FreshnessTracker,
+    dataCache?: Map<string, string>,
+    abortSignal?: AbortSignal,
   ): Promise<Envelope[]> {
     const maxConcurrency = this.config.max_concurrency
     const envelopes: Envelope[] = []
@@ -355,6 +396,10 @@ export class AtlasPipeline {
     if (layer === 'L4') {
       const l4Envelopes: Envelope[] = []
       for (const agent of toRun) {
+        if (abortSignal?.aborted) {
+          console.log(`atlas: L4 aborted before ${agent.name}`)
+          break
+        }
         const weight = weights[agent.name] ?? 1.0
         // Build staged context: upstream (L1-L3) + all prior L4 envelopes
         const stagedContext = [...upstreamContext]
@@ -373,7 +418,7 @@ export class AtlasPipeline {
           }
           stagedContext.push(l4Prior)
         }
-        const envelope = await runner.run(agent, weight, stagedContext)
+        const envelope = await runner.run(agent, weight, stagedContext, abortSignal)
         l4Envelopes.push(envelope)
         envelopes.push(envelope)
         // Cache L4 envelopes too
@@ -386,14 +431,19 @@ export class AtlasPipeline {
     // L1/L2/L3 run concurrently with concurrency limit + envelope caching
     const chunks = chunkArray(toRun, maxConcurrency)
     for (const chunk of chunks) {
+      if (abortSignal?.aborted) {
+        console.log(`atlas: ${layer} aborted between chunks`)
+        break
+      }
       const results = await Promise.all(
         chunk.map(async (agent) => {
           const weight = weights[agent.name] ?? 1.0
 
-          // Check freshness: can we serve cached envelope?
-          if (freshness) {
-            const needsRerun = freshness.shouldAgentRerun(
-              agent.name, agent.data_sources, {},
+          // Check freshness using actual prefetched data hash
+          if (freshness && dataCache) {
+            const agentData = dataCache.get(`${departmentId}:${agent.name}`) ?? ''
+            const needsRerun = freshness.shouldAgentRerunWithData(
+              agent.name, agent.data_sources, agentData,
             )
             if (!needsRerun) {
               const cached = await freshness.loadEnvelope(agent.name)
@@ -404,10 +454,16 @@ export class AtlasPipeline {
             }
           }
 
-          const envelope = await runner.run(agent, weight, upstreamContext)
+          const envelope = await runner.run(agent, weight, upstreamContext, abortSignal)
 
-          // Cache the envelope for next run
-          if (freshness) await freshness.saveEnvelope(agent.name, envelope)
+          // Cache the envelope + mark data hash for next run
+          if (freshness) {
+            await freshness.saveEnvelope(agent.name, envelope)
+            if (dataCache) {
+              const agentData = dataCache.get(`${departmentId}:${agent.name}`) ?? ''
+              freshness.markAgentDataSeen(agent.name, agentData)
+            }
+          }
 
           await this.callbacks.onAgentComplete?.(agent, envelope, departmentId)
           return envelope
@@ -415,6 +471,9 @@ export class AtlasPipeline {
       )
       envelopes.push(...results)
     }
+
+    // Persist freshness state after layer completes
+    if (freshness) await freshness.persistState()
 
     return envelopes
   }

@@ -24,7 +24,7 @@ import type { BrainExportState } from './extension/brain/index.js'
 import { createBrowserTools } from './extension/browser/index.js'
 import { SymbolIndex } from './openbb/equity/index.js'
 import { createEquityTools } from './extension/equity/index.js'
-import { getSDKExecutor, buildRouteMap, SDKEquityClient, SDKCryptoClient, SDKCurrencyClient, SDKNewsClient } from './openbb/sdk/index.js'
+import { getSDKExecutor, buildRouteMap, SDKEquityClient, SDKCryptoClient, SDKCurrencyClient, SDKNewsClient, SDKEconomyClient, SDKCommodityClient } from './openbb/sdk/index.js'
 import type { EquityClientLike, CryptoClientLike, CurrencyClientLike, NewsClientLike } from './openbb/sdk/types.js'
 import { buildSDKCredentials } from './openbb/credential-map.js'
 import { OpenBBEquityClient } from './openbb/equity/client.js'
@@ -230,6 +230,8 @@ async function main() {
   let cryptoClient: CryptoClientLike
   let currencyClient: CurrencyClientLike
   let newsClient: NewsClientLike
+  let economyClient: SDKEconomyClient | undefined
+  let commodityClient: SDKCommodityClient | undefined
 
   if (config.openbb.dataBackend === 'openbb') {
     const url = config.openbb.apiUrl
@@ -238,6 +240,7 @@ async function main() {
     cryptoClient = new OpenBBCryptoClient(url, providers.crypto, keys)
     currencyClient = new OpenBBCurrencyClient(url, providers.currency, keys)
     newsClient = new OpenBBNewsClient(url, undefined, keys)
+    // Economy & Commodity only available via SDK backend (no HTTP client exists)
   } else {
     const executor = getSDKExecutor()
     const routeMap = buildRouteMap()
@@ -246,6 +249,8 @@ async function main() {
     cryptoClient = new SDKCryptoClient(executor, 'crypto', providers.crypto, credentials, routeMap)
     currencyClient = new SDKCurrencyClient(executor, 'currency', providers.currency, credentials, routeMap)
     newsClient = new SDKNewsClient(executor, 'news', undefined, credentials, routeMap)
+    economyClient = new SDKEconomyClient(executor, 'economy', undefined, credentials, routeMap)
+    commodityClient = new SDKCommodityClient(executor, 'commodity', undefined, credentials, routeMap)
   }
 
   // OpenBB API server is started later via optionalPlugins
@@ -531,7 +536,7 @@ async function main() {
     getAccountGit: (id: string): ITradingGit | undefined => accountSetups.get(id)?.git,
     reconnectAccount,
     reconnectConnectors,
-    extensions: { newsStore, equityClient },
+    extensions: { newsStore, equityClient, cryptoClient, currencyClient, newsClient, economyClient, commodityClient },
   }
 
   for (const plugin of [...corePlugins, ...optionalPlugins.values()]) {

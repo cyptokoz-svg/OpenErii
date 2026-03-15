@@ -10,6 +10,7 @@ import { z } from 'zod'
 import type { AtlasPipeline } from './pipeline.js'
 import type { AutoResearch } from './autoresearch.js'
 import type { AtlasConfig, DepartmentConfig } from './types.js'
+import type { WalkForwardDeps } from './backtest/index.js'
 
 // ==================== Tool Factory ====================
 
@@ -17,6 +18,8 @@ export interface AtlasToolsDeps {
   pipeline: AtlasPipeline
   config: AtlasConfig
   getAutoResearch: (departmentId: string) => AutoResearch
+  /** Optional: backtest engine deps */
+  getBacktestDeps?: () => WalkForwardDeps | null
 }
 
 export function createAtlasTools(deps: AtlasToolsDeps) {
@@ -134,6 +137,62 @@ export function createAtlasTools(deps: AtlasToolsDeps) {
           timeframes: d.timeframes,
           last_run: pipeline.getLastRunTimestamp(d.id) ?? 'never',
         }))
+      },
+    }),
+
+    /**
+     * Run a walk-forward backtest on a department.
+     */
+    atlasBacktest: tool({
+      description:
+        'Run a walk-forward historical simulation on an Atlas department. ' +
+        'Replays history day by day: run pipeline → generate signals → score → update weights → evolve agents. ' +
+        'This bootstraps the department\'s Darwinian improvement cycle from historical data.',
+      inputSchema: z.object({
+        department: z.string().describe('Department ID, e.g. "commodity"'),
+        startDate: z.string().describe('Start date YYYY-MM-DD, e.g. "2022-01-03"'),
+        endDate: z.string().describe('End date YYYY-MM-DD, e.g. "2026-03-14"'),
+        step: z.number().int().min(1).max(30).optional().describe('Run every N trading days (default: 5)'),
+        disable_evolution: z.boolean().optional().describe('Disable agent evolution (default: false)'),
+      }),
+      execute: async ({ department, startDate, endDate, step, disable_evolution }) => {
+        const btDeps = deps.getBacktestDeps?.()
+        if (!btDeps) return { error: 'Backtest dependencies not available' }
+
+        const { WalkForwardEngine } = await import('./backtest/index.js')
+        const engine = new WalkForwardEngine(btDeps)
+
+        try {
+          const result = await engine.run({
+            department,
+            startDate,
+            endDate,
+            step: step ?? 5,
+            disable_evolution: disable_evolution ?? false,
+            initialCapital: 100000,
+          })
+
+          return {
+            status: result.status,
+            total_return: `${result.metrics.total_return_pct}%`,
+            max_drawdown: `${result.metrics.max_drawdown_pct}%`,
+            sharpe: result.metrics.sharpe_ratio,
+            win_rate: `${result.metrics.win_rate_pct}%`,
+            total_signals: result.metrics.total_signals,
+            scored_signals: result.metrics.scored_signals,
+            elapsed: `${Math.round(result.elapsed_ms / 1000)}s`,
+            top_agents: result.agent_attribution.slice(0, 5).map((a) => ({
+              agent: a.agent,
+              sharpe: a.sharpe,
+              win_rate: `${a.win_rate_pct}%`,
+              weight: `${a.weight_start.toFixed(2)} → ${a.weight_end.toFixed(2)}`,
+              evolved: a.evolved,
+            })),
+            evolution_events: result.evolution_log.length,
+          }
+        } catch (err) {
+          return { error: String(err) }
+        }
       },
     }),
   }

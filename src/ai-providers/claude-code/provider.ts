@@ -62,6 +62,8 @@ export async function askClaudeCode(
     cwd = process.cwd(),
     systemPrompt,
     appendSystemPrompt,
+    model,
+    abortSignal,
     onToolUse,
     onToolResult,
     onText,
@@ -96,6 +98,10 @@ export async function askClaudeCode(
     args.push('--append-system-prompt', appendSystemPrompt)
   }
 
+  if (model) {
+    args.push('--model', model)
+  }
+
   return new Promise<ClaudeCodeResult>((resolve, reject) => {
     const child = spawn('claude', args, {
       cwd,
@@ -107,6 +113,17 @@ export async function askClaudeCode(
     let stderr = ''
     let resultText = ''
     const messages: ClaudeCodeMessage[] = []
+
+    // Wire up abort signal to kill the child process
+    if (abortSignal) {
+      if (abortSignal.aborted) {
+        child.kill('SIGTERM')
+        return resolve({ text: 'Aborted', ok: false, messages: [] })
+      }
+      const onAbort = () => { child.kill('SIGTERM') }
+      abortSignal.addEventListener('abort', onAbort, { once: true })
+      child.on('close', () => abortSignal.removeEventListener('abort', onAbort))
+    }
 
     child.stdout.on('data', (chunk: Buffer) => {
       buffer += chunk.toString()
@@ -178,6 +195,20 @@ export async function askClaudeCode(
     })
 
     child.on('close', (code) => {
+      // Parse any remaining content in buffer (last line without trailing newline)
+      const remaining = buffer.trim()
+      if (remaining) {
+        try {
+          const event = JSON.parse(remaining)
+          if (event.type === 'result') {
+            resultText = event.result ?? ''
+          }
+        } catch {
+          // Not valid JSON, ignore
+        }
+        buffer = ''
+      }
+
       if (code !== 0) {
         logger.error({ code, stderr: stderr.slice(0, 500) }, 'exit_error')
         return resolve({

@@ -17,6 +17,8 @@ export { synthesizeLayer } from './synthesizer.js'
 export { KnowledgeGraph } from './knowledge.js'
 export { Scorecard } from './scorecard.js'
 export { AutoResearch } from './autoresearch.js'
+export { FreshnessTracker } from './freshness.js'
+export { NewsRouter } from './news-router.js'
 export { DataBridge } from './data-bridge.js'
 
 // Alice integration

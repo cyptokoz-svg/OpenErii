@@ -16,6 +16,9 @@ import { createAtlasTools } from './adapter.js'
 import { ensureAtlasChannels, deptChannelId } from './channels.js'
 import type { AgentConfig, AtlasConfig, Envelope, PipelineCallbacks } from './types.js'
 import type { LLMCallFn } from './runner.js'
+import type { WalkForwardDeps } from './backtest/index.js'
+import { createModelFromConfig } from '../../ai-providers/vercel-ai-sdk/model-factory.js'
+import { readAIProviderConfig } from '../../core/config.js'
 
 export interface AtlasBootstrapDeps {
   ctx: EngineContext
@@ -69,9 +72,7 @@ export async function bootstrapAtlas(
 
   // Pipeline callbacks — push agent analysis to research channels
   const callbacks: PipelineCallbacks = {
-    onAgentComplete: (agent: AgentConfig, envelope: Envelope) => {
-      // Derive department from the agent's envelope context
-      // The pipeline passes this via the run opts
+    onAgentComplete: (agent: AgentConfig, envelope: Envelope, departmentId: string) => {
       const data = JSON.stringify({
         type: 'atlas-agent',
         agent: agent.display_name ?? agent.name,
@@ -83,14 +84,9 @@ export async function bootstrapAtlas(
         knowledge_updates: envelope.knowledge_updates,
         timestamp: envelope.timestamp,
       })
-      // Push to all atlas department channels (the pipeline doesn't expose dept in callback args)
-      for (const dept of config.departments) {
-        if (!dept.enabled) continue
-        pushToChannel(deptChannelId(dept.id), data)
-      }
+      pushToChannel(deptChannelId(departmentId), data)
     },
-    onLayerComplete: (synthesis) => {
-      // Broadcast layer summary to all active department channels
+    onLayerComplete: (synthesis, departmentId: string) => {
       const data = JSON.stringify({
         type: 'atlas-layer',
         layer: synthesis.layer,
@@ -100,10 +96,7 @@ export async function bootstrapAtlas(
         summary: synthesis.summary,
         timestamp: new Date().toISOString(),
       })
-      for (const dept of config.departments) {
-        if (!dept.enabled) continue
-        pushToChannel(deptChannelId(dept.id), data)
-      }
+      pushToChannel(deptChannelId(departmentId), data)
     },
     onReportComplete: (report) => {
       // Final report → research channel for the specific department
@@ -125,8 +118,30 @@ export async function bootstrapAtlas(
     },
   }
 
-  // LLM call function — uses Alice's GenerateRouter
-  const llmCall: LLMCallFn = async (prompt: string, _model: string): Promise<string> => {
+  // LLM call function — uses Alice's credentials + Atlas's own model tier
+  // Provider/apiKey/baseUrl syncs from Alice, model comes from Atlas model_tiers
+  const llmCall: LLMCallFn = async (prompt: string, model: string): Promise<string> => {
+    const aiConfig = await readAIProviderConfig()
+
+    // Try direct API call with Atlas's model tier (always preferred — enables per-layer model selection)
+    const hasApiAccess = aiConfig.backend === 'vercel-ai-sdk'
+      || Object.values(aiConfig.apiKeys || {}).some((k) => !!k)
+      || !!aiConfig.baseUrl // proxy like auth2api
+
+    if (hasApiAccess) {
+      try {
+        const { generateText } = await import('ai')
+        const { model: languageModel } = await createModelFromConfig(
+          model ? { provider: aiConfig.provider || 'anthropic', model, baseUrl: aiConfig.baseUrl } : undefined,
+        )
+        const result = await generateText({ model: languageModel, prompt })
+        return result.text
+      } catch (err) {
+        console.warn(`atlas: direct API call failed (model=${model}), falling back to generateRouter:`, err)
+      }
+    }
+
+    // Fallback: use GenerateRouter (claude-code CLI — model tiers won't apply)
     const provider = await generateRouter.resolve()
     const result = await provider.ask(prompt)
     return result.text
@@ -142,6 +157,35 @@ export async function bootstrapAtlas(
     return dataBridge.shouldRun(agent, deptId)
   }
 
+  // Forward return lookup for scoring past signals
+  const fetchReturn = async (ticker: string, date: string, days: number): Promise<number | null> => {
+    try {
+      const startDate = new Date(date)
+      const endDate = new Date(startDate)
+      endDate.setDate(endDate.getDate() + days + 2) // extra buffer for weekends/holidays
+
+      // Only score if enough time has passed
+      if (endDate.getTime() > Date.now()) return null
+
+      const bars = await dataBridgeDeps.fetchPrice(ticker, '1d')
+      if (bars.length < 2) return null
+
+      // Find the bar closest to signal date and the bar N days later
+      const signalIdx = bars.findIndex((b) => b.date >= date)
+      if (signalIdx < 0) return null
+      const futureIdx = Math.min(signalIdx + days, bars.length - 1)
+      if (futureIdx <= signalIdx) return null
+
+      const entryPrice = bars[signalIdx].close
+      const exitPrice = bars[futureIdx].close
+      if (entryPrice === 0) return null
+
+      return (exitPrice - entryPrice) / entryPrice
+    } catch {
+      return null
+    }
+  }
+
   // Build pipeline
   const pipelineConfig: PipelineConfig = {
     atlasConfig: config,
@@ -149,8 +193,16 @@ export async function bootstrapAtlas(
     dataFetch,
     shouldRunAgent,
     callbacks,
+    fetchReturn,
   }
   const pipeline = new AtlasPipeline(pipelineConfig)
+
+  // Build backtest deps factory
+  const getBacktestDeps = (): WalkForwardDeps => ({
+    atlasConfig: config,
+    llmCall,
+    dataBridgeDeps,
+  })
 
   // Register tools
   const autoResearchers = new Map<string, AutoResearch>()
@@ -170,6 +222,7 @@ export async function bootstrapAtlas(
       }
       return ar
     },
+    getBacktestDeps: () => getBacktestDeps(),
   })
 
   // Register tools with Alice's ToolCenter (batch registration under 'atlas' group)

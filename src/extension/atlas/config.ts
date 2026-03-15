@@ -5,7 +5,7 @@
  * All validated with Zod schemas. Missing files fall back to defaults.
  */
 
-import { readFile } from 'fs/promises'
+import { readFile, writeFile, mkdir } from 'fs/promises'
 import { resolve } from 'path'
 import { z } from 'zod'
 import type { AtlasConfig, DepartmentConfig, AgentConfig } from './types.js'
@@ -18,10 +18,14 @@ const ATLAS_DATA_DIR = resolve('data/atlas')
 // ==================== Zod Schemas ====================
 
 const DataSourceSchema = z.object({
-  provider: z.string(),
-  query: z.string(),
+  provider: z.string().default(''),
+  query: z.string().default(''),
   symbols: z.array(z.string()).optional(),
-  type: z.enum(['price', 'news', 'macro']).default('price'),
+  type: z.enum(['price', 'news', 'macro', 'equity', 'economy', 'crypto', 'commodity', 'currency']).default('price'),
+  /** SDK client method name, e.g. 'getIncomeStatement', 'fredSeries'. */
+  method: z.string().optional(),
+  /** Params to pass directly to the SDK method. */
+  params: z.record(z.string(), z.unknown()).optional(),
 })
 
 const AgentConfigSchema = z.object({
@@ -52,6 +56,8 @@ const AtlasConfigSchema = z.object({
   model_tiers: z.record(z.string(), z.string()).default({ default: 'haiku' }),
   max_concurrency: z.number().int().min(1).default(5),
   departments: z.array(DepartmentConfigSchema).default([]),
+  /** External Obsidian vault path for knowledge mirror. */
+  obsidian_vault_path: z.string().optional(),
 })
 
 // ==================== Defaults ====================
@@ -61,6 +67,7 @@ const DEFAULT_ATLAS_CONFIG: AtlasConfig = {
   model_tiers: { default: 'haiku' },
   max_concurrency: 5,
   departments: [],
+  obsidian_vault_path: undefined,
 }
 
 // ==================== Loaders ====================
@@ -82,6 +89,16 @@ export async function loadAtlasConfig(): Promise<AtlasConfig> {
   return AtlasConfigSchema.parse(raw)
 }
 
+/** Update atlas.json config (partial merge). */
+export async function saveAtlasConfig(patch: Partial<AtlasConfig>): Promise<AtlasConfig> {
+  const current = await loadAtlasConfig()
+  const merged = { ...current, ...patch }
+  const validated = AtlasConfigSchema.parse(merged)
+  await mkdir(resolve(ATLAS_CONFIG_PATH, '..'), { recursive: true })
+  await writeFile(ATLAS_CONFIG_PATH, JSON.stringify(validated, null, 2))
+  return validated
+}
+
 /** Load agents.json for a specific department. */
 export async function loadDepartmentAgents(department: DepartmentConfig): Promise<AgentConfig[]> {
   const agentsPath = resolve(ATLAS_DATA_DIR, department.id, department.agents_config)
@@ -99,9 +116,15 @@ export async function loadDepartmentAgents(department: DepartmentConfig): Promis
   return agents.filter((a) => a.enabled)
 }
 
-/** Load prompt file content for an agent. */
-export async function loadPrompt(departmentId: string, promptFile: string): Promise<string> {
-  const promptPath = resolve(ATLAS_DATA_DIR, departmentId, promptFile)
+/** Load prompt file content for an agent.
+ * @param baseOrDeptId — department ID (resolved under ATLAS_DATA_DIR) or absolute path when isAbsolute=true
+ * @param promptFile — relative path to prompt file within the base dir
+ * @param isAbsolute — if true, baseOrDeptId is treated as an absolute directory path
+ */
+export async function loadPrompt(baseOrDeptId: string, promptFile: string, isAbsolute?: boolean): Promise<string> {
+  const promptPath = isAbsolute
+    ? resolve(baseOrDeptId, promptFile)
+    : resolve(ATLAS_DATA_DIR, baseOrDeptId, promptFile)
   try {
     return await readFile(promptPath, 'utf-8')
   } catch {

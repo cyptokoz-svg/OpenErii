@@ -13,10 +13,11 @@ import { DevPage } from './pages/DevPage'
 import { HeartbeatPage } from './pages/HeartbeatPage'
 import { ToolsPage } from './pages/ToolsPage'
 import { AtlasPage } from './pages/AtlasPage'
+import { BacktestPage } from './pages/BacktestPage'
 
 export type Page =
   | 'chat' | 'portfolio' | 'events' | 'heartbeat' | 'data-sources' | 'connectors'
-  | 'trading' | 'atlas'
+  | 'trading' | 'atlas' | 'backtest'
   | 'ai-provider' | 'settings' | 'tools' | 'dev'
 
 /** Page type → URL path mapping. Chat is the root, everything else maps to /slug. */
@@ -30,6 +31,7 @@ export const ROUTES: Record<Page, string> = {
   'tools': '/tools',
   'trading': '/trading',
   'atlas': '/atlas',
+  'backtest': '/backtest',
   'ai-provider': '/ai-provider',
   'settings': '/settings',
   'dev': '/dev',
@@ -41,25 +43,27 @@ export function App() {
   const location = useLocation()
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full overflow-x-hidden safe-top">
       <Sidebar
         sseConnected={sseConnected}
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
       />
-      <main className="flex-1 flex flex-col min-w-0 min-h-0 bg-bg">
+      <main className="flex-1 flex flex-col min-w-0 min-h-0 bg-bg overflow-x-hidden">
         {/* Mobile header — visible only below md */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-bg-secondary shrink-0 md:hidden">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="text-text-muted hover:text-text p-1 -ml-1"
-            aria-label="Open menu"
-          >
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-              <path d="M3 5h14M3 10h14M3 15h14" />
-            </svg>
-          </button>
-          <span className="text-sm font-semibold text-text">Open Alice</span>
+        <div className="shrink-0 md:hidden bg-bg border-b border-border">
+          <div className="flex items-center gap-3 px-4 py-3">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="text-text-muted hover:text-text p-1 -ml-1"
+              aria-label="Open menu"
+            >
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                <path d="M3 5h14M3 10h14M3 15h14" />
+              </svg>
+            </button>
+            <span className="text-sm font-semibold text-text">OpenErii</span>
+          </div>
         </div>
         <div key={location.pathname} className="page-fade-in flex-1 flex flex-col min-h-0">
           <Routes>
@@ -72,6 +76,7 @@ export function App() {
             <Route path="/tools" element={<ToolsPage />} />
             <Route path="/trading" element={<TradingPage />} />
             <Route path="/atlas" element={<AtlasPage />} />
+            <Route path="/backtest" element={<BacktestPage />} />
             <Route path="/ai-provider" element={<AIProviderPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/dev" element={<DevPage />} />

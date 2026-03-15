@@ -15,6 +15,10 @@ export interface ClaudeCodeConfig {
   systemPrompt?: string
   /** Append to Claude Code's default system prompt. */
   appendSystemPrompt?: string
+  /** Model override (e.g. 'claude-haiku-4-5'). Maps to --model flag. */
+  model?: string
+  /** AbortSignal to cancel the running process. */
+  abortSignal?: AbortSignal
   /**
    * Called for each tool_use block in the JSONL stream.
    * Use this to stream tool call events to consumers.

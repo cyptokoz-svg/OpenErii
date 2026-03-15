@@ -100,19 +100,19 @@ export class SDKEconomyClient extends SDKBaseClient {
   // ==================== FRED ====================
 
   async fredSearch(params: Record<string, unknown>) {
-    return this.request('/fred_search', params)
+    return this.request('/fred_search', { provider: 'fred', ...params })
   }
 
   async fredSeries(params: Record<string, unknown>) {
-    return this.request('/fred_series', params)
+    return this.request('/fred_series', { provider: 'fred', ...params })
   }
 
   async fredReleaseTable(params: Record<string, unknown>) {
-    return this.request('/fred_release_table', params)
+    return this.request('/fred_release_table', { provider: 'fred', ...params })
   }
 
   async fredRegional(params: Record<string, unknown>) {
-    return this.request('/fred_regional', params)
+    return this.request('/fred_regional', { provider: 'fred', ...params })
   }
 
   // ==================== GDP ====================

@@ -15,61 +15,61 @@ import { formatSynthesisContext } from './synthesizer.js'
 // ==================== Output Schema Templates ====================
 
 const STANDARD_OUTPUT_SCHEMA = `
-## Output Format
-Respond with strict JSON:
+## 输出格式
+重要：你的全部回复必须是一个JSON对象。不要在JSON前后添加任何文字、解释或评论。不要以"我"、"基于"、"I"或任何其他文字开头。所有文本字段请用中文填写。只输出以下JSON结构：
 {
   "signal": {
-    "direction": "BULLISH or BEARISH or NEUTRAL",
+    "direction": "BULLISH 或 BEARISH 或 NEUTRAL",
     "conviction": 1-100,
-    "targets": ["relevant tickers"]
+    "targets": ["相关标的代码"]
   },
   "reasoning": {
-    "summary": "One sentence summary",
-    "key_factors": ["factor1", "factor2"],
-    "data_used": ["data sources used"],
-    "caveats": "Key risks to watch"
+    "summary": "一句话中文总结",
+    "key_factors": ["因素1", "因素2"],
+    "data_used": ["使用的数据源"],
+    "caveats": "需要关注的关键风险"
   },
   "knowledge_updates": [
     {
       "file": "filename.md",
       "type": "insight | event | lesson | pattern | seasonal",
-      "content": "New finding with [[concept]] links"
+      "content": "用中文描述新发现，包含[[概念]]链接"
     }
   ]
 }`.trim()
 
 const L4_OUTPUT_SCHEMA = `
-## Ticker Reference
-CL=F:WTI  BZ=F:Brent  NG=F:NatGas  GC=F:Gold  SI=F:Silver
-HG=F:Copper  ZW=F:Wheat  ZC=F:Corn  ZS=F:Soybean
-KC=F:Coffee  SB=F:Sugar  LE=F:LiveCattle  HE=F:LeanHogs
+## 标的代码参考
+CL=F:WTI原油  BZ=F:布伦特  NG=F:天然气  GC=F:黄金  SI=F:白银
+HG=F:铜  ZW=F:小麦  ZC=F:玉米  ZS=F:大豆
+KC=F:咖啡  SB=F:糖  LE=F:活牛  HE=F:瘦肉猪
 
-## Output Format
-Respond with strict JSON:
+## 输出格式
+重要：你的全部回复必须是一个JSON对象。不要在JSON前后添加任何文字、解释或评论。不要以"我"、"基于"、"I"或任何其他文字开头。所有文本字段请用中文填写。只输出以下JSON结构：
 {
   "signal": {
-    "direction": "BULLISH or BEARISH or NEUTRAL",
+    "direction": "BULLISH 或 BEARISH 或 NEUTRAL",
     "conviction": 1-100,
     "targets": ["CL=F"],
     "positions": [
       {
         "ticker": "CL=F",
-        "name": "WTI Crude",
-        "direction": "long or short",
+        "name": "WTI原油",
+        "direction": "long 或 short",
         "size_pct": 5.0,
         "entry_price": 82.50,
         "entry_zone": [80.0, 83.5],
         "stop_loss": 77.0,
         "take_profit": [88.0, 93.0],
-        "rationale": "Brief reason"
+        "rationale": "简要中文理由"
       }
     ]
   },
   "reasoning": {
-    "summary": "Final decision summary",
-    "key_factors": ["factor1", "factor2"],
-    "data_used": ["data sources"],
-    "caveats": "Key risks"
+    "summary": "最终决策中文总结",
+    "key_factors": ["因素1", "因素2"],
+    "data_used": ["数据源"],
+    "caveats": "关键风险"
   },
   "knowledge_updates": []
 }`.trim()
@@ -77,7 +77,7 @@ Respond with strict JSON:
 // ==================== Types ====================
 
 /** Function that calls the LLM and returns text response. */
-export type LLMCallFn = (prompt: string, model: string) => Promise<string>
+export type LLMCallFn = (prompt: string, model: string, abortSignal?: AbortSignal) => Promise<string>
 
 /** Function that fetches data for an agent. */
 export type DataFetchFn = (agent: AgentConfig, departmentId: string) => Promise<string>
@@ -88,6 +88,8 @@ export interface RunnerConfig {
   knowledgeGraph: KnowledgeGraph
   llmCall: LLMCallFn
   dataFetch: DataFetchFn
+  /** Override prompt directory (backtest isolation) */
+  promptDir?: string
 }
 
 // ==================== Runner ====================
@@ -98,6 +100,7 @@ export class AgentRunner {
   private kg: KnowledgeGraph
   private llmCall: LLMCallFn
   private dataFetch: DataFetchFn
+  private promptDir?: string
 
   constructor(opts: RunnerConfig) {
     this.config = opts.atlasConfig
@@ -105,6 +108,7 @@ export class AgentRunner {
     this.kg = opts.knowledgeGraph
     this.llmCall = opts.llmCall
     this.dataFetch = opts.dataFetch
+    this.promptDir = opts.promptDir
   }
 
   /**
@@ -114,11 +118,14 @@ export class AgentRunner {
     agent: AgentConfig,
     weight: number,
     upstreamContext?: LayerSynthesis[],
+    abortSignal?: AbortSignal,
   ): Promise<Envelope> {
     const startTime = Date.now()
 
-    // 1. Load prompt
-    const prompt = await loadPrompt(this.departmentId, agent.prompt_file)
+    // 1. Load prompt (use promptDir override if set, e.g. during backtest)
+    const prompt = this.promptDir
+      ? await loadPrompt(this.promptDir, agent.prompt_file, true)
+      : await loadPrompt(this.departmentId, agent.prompt_file)
     if (!prompt) {
       return this.buildFallbackEnvelope(agent, weight, 'Prompt file not found')
     }
@@ -156,7 +163,7 @@ export class AgentRunner {
     const model = resolveModel(this.config, agent.model_tier)
     let rawResponse: string
     try {
-      rawResponse = await this.llmCall(fullPrompt, model)
+      rawResponse = await this.llmCall(fullPrompt, model, abortSignal)
     } catch (err) {
       console.warn(`atlas: LLM call failed for ${agent.name}:`, err)
       return this.buildFallbackEnvelope(agent, weight, `LLM error: ${err}`)

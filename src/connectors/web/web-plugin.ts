@@ -23,12 +23,15 @@ import { AtlasPipeline } from '../../extension/atlas/pipeline.js'
 import { ensureAtlasChannels, deptChannelId } from '../../extension/atlas/channels.js'
 import { AutoResearch } from '../../extension/atlas/autoresearch.js'
 import { createAtlasTools } from '../../extension/atlas/adapter.js'
-import { DataBridge, type DataBridgeDeps } from '../../extension/atlas/data-bridge.js'
+import { DataBridge, type DataBridgeDeps, type GenericClient } from '../../extension/atlas/data-bridge.js'
+import { NewsRouter } from '../../extension/atlas/news-router.js'
 import type { NewsCollectorStore } from '../../extension/news-collector/store.js'
 import type { EquityClientLike } from '../../openbb/sdk/types.js'
 import type { PriceBar } from '../../extension/atlas/data-bridge.js'
+import type { DataSourceType } from '../../extension/atlas/types.js'
 import type { AtlasConfig, AgentConfig, Envelope, PipelineCallbacks } from '../../extension/atlas/types.js'
 import type { LLMCallFn } from '../../extension/atlas/runner.js'
+import type { WalkForwardDeps } from '../../extension/atlas/backtest/index.js'
 
 export interface WebConfig {
   port: number
@@ -44,6 +47,8 @@ export class WebPlugin implements Plugin {
   // Atlas state — initialized lazily after start()
   private atlasPipeline: AtlasPipeline | null = null
   private atlasConfig: AtlasConfig | null = null
+  private atlasLlmCall: LLMCallFn | null = null
+  private atlasDataBridgeDeps: DataBridgeDeps | null = null
   private sessions = new Map<string, SessionStore>()
 
   constructor(private config: WebConfig) {}
@@ -105,12 +110,21 @@ export class WebPlugin implements Plugin {
     app.route('/api/atlas', createAtlasRoutes({
       getPipeline: () => this.atlasPipeline,
       getConfig: () => this.atlasConfig,
+      getBacktestDeps: () => this.atlasConfig && this.atlasLlmCall && this.atlasDataBridgeDeps
+        ? { atlasConfig: this.atlasConfig, llmCall: this.atlasLlmCall, dataBridgeDeps: this.atlasDataBridgeDeps }
+        : null,
     }))
 
     // ==================== Serve UI (Vite build output) ====================
     const uiRoot = resolve('dist/ui')
     app.use('/*', serveStatic({ root: uiRoot }))
-    app.get('*', serveStatic({ root: uiRoot, path: 'index.html' }))
+    // SPA fallback — serve index.html with no-cache so Safari always gets the latest
+    app.get('*', async (c, next) => {
+      c.header('Cache-Control', 'no-cache, no-store, must-revalidate')
+      c.header('Pragma', 'no-cache')
+      c.header('Expires', '0')
+      return serveStatic({ root: uiRoot, path: 'index.html' })(c, next)
+    })
 
     // ==================== Connector registration ====================
     // The web connector only targets the main 'default' channel (heartbeat/cron notifications).
@@ -143,11 +157,17 @@ export class WebPlugin implements Plugin {
         this.sseByChannel.set(chId, new Map())
       }
     }
-    // Also ensure existing atlas channels have SSE maps
+    // Also ensure existing atlas channels have SSE maps + sessions
     for (const dept of this.atlasConfig.departments) {
       const chId = deptChannelId(dept.id)
       if (!this.sseByChannel.has(chId)) {
         this.sseByChannel.set(chId, new Map())
+      }
+      // Create session for persistence (so messages survive page reload)
+      if (!this.sessions.has(chId)) {
+        const session = new SessionStore(`web/${chId}`)
+        await session.restore()
+        this.sessions.set(chId, session)
       }
     }
 
@@ -161,7 +181,7 @@ export class WebPlugin implements Plugin {
     }
 
     // Direction emoji helper
-    const dirEmoji = (d: string) => d === 'bullish' ? '🟢' : d === 'bearish' ? '🔴' : '⚪'
+    const dirEmoji = (d: string) => d.toUpperCase() === 'BULLISH' ? '🟢' : d.toUpperCase() === 'BEARISH' ? '🔴' : '⚪'
     // Agent Chinese name lookup
     const AGENT_ZH: Record<string, string> = {
       fed_watcher: '美联储观察', dollar_fx: '美元/外汇', inflation_tracker: '通胀追踪',
@@ -200,11 +220,19 @@ export class WebPlugin implements Plugin {
         ].filter(Boolean).join('\n')
 
         // Bug #9 fix: only push to the specific department channel being analyzed
-        pushToChannel(deptChannelId(departmentId), JSON.stringify({
+        const channelId = deptChannelId(departmentId)
+        pushToChannel(channelId, JSON.stringify({
           type: 'message', kind: 'notification', text,
         }))
+
+        // Persist to channel session so messages survive page reload
+        const session = this.sessions.get(channelId)
+        if (session) {
+          session.appendAssistant(text, 'notification', {
+            source: 'atlas', agent: agent.name, layer: agent.layer,
+          }).catch((err) => { console.warn('atlas: session persist failed:', err) })
+        }
       },
-      // Bug #9 fix: departmentId is now passed by pipeline
       onLayerComplete: (synthesis, departmentId: string) => {
         const text = [
           `━━━ ${synthesis.layer} 层级综合 ━━━`,
@@ -216,9 +244,18 @@ export class WebPlugin implements Plugin {
         ].join('\n')
 
         // Bug #9 fix: only push to the specific department channel
-        pushToChannel(deptChannelId(departmentId), JSON.stringify({
+        const layerChannelId = deptChannelId(departmentId)
+        pushToChannel(layerChannelId, JSON.stringify({
           type: 'message', kind: 'notification', text,
         }))
+
+        // Persist layer synthesis to channel session
+        const layerSession = this.sessions.get(layerChannelId)
+        if (layerSession) {
+          layerSession.appendAssistant(text, 'notification', {
+            source: 'atlas', layer: synthesis.layer,
+          }).catch((err) => { console.warn('atlas: session persist failed:', err) })
+        }
       },
       onReportComplete: (report) => {
         // Bug #6 fix: use p.ticker (not p.asset)
@@ -261,7 +298,7 @@ export class WebPlugin implements Plugin {
             department: report.department,
             direction: report.direction,
             conviction: report.conviction,
-          }).catch(() => { /* best-effort */ })
+          }).catch((err) => { console.warn('atlas: session persist failed:', err) })
         }
 
         // Also persist to the research channel session
@@ -270,17 +307,58 @@ export class WebPlugin implements Plugin {
           deptSession.appendAssistant(text, 'notification', {
             source: 'atlas',
             department: report.department,
-          }).catch(() => { /* best-effort */ })
+          }).catch((err) => { console.warn('atlas: session persist failed:', err) })
         }
+
+        // Emit event to EventLog for audit trail + downstream listeners
+        ctx.eventLog.append('atlas.complete', {
+          department: report.department,
+          direction: report.direction,
+          conviction: report.conviction,
+          positions: report.positions.map((p) => ({
+            ticker: p.ticker, direction: p.direction, size_pct: p.size_pct,
+          })),
+          summary: report.summary,
+          skipped_agents: report.skipped_agents.length,
+          total_calls: report.cost_estimate.total_calls,
+          skipped_calls: report.cost_estimate.skipped_calls,
+        }).catch((err) => { console.warn('atlas: event log failed:', err) })
       },
     }
 
-    // LLM call — direct generateText (no tools/agent loop = fast)
-    const llmCall: LLMCallFn = async (prompt: string, _model: string): Promise<string> => {
-      const { generateText } = await import('ai')
-      const { createModelFromConfig } = await import('../../ai-providers/vercel-ai-sdk/model-factory.js')
-      const { model } = await createModelFromConfig()
-      const result = await generateText({ model, prompt })
+    // LLM call — uses Alice's AI config + Atlas model tier override
+    const llmCall: LLMCallFn = async (prompt: string, model: string, abortSignal?: AbortSignal): Promise<string> => {
+      const { readAIProviderConfig } = await import('../../core/config.js')
+      const aiConfig = await readAIProviderConfig()
+
+      // Try direct API call when API access is available (enables per-layer model selection)
+      const hasApiAccess = aiConfig.backend === 'vercel-ai-sdk'
+        || Object.values(aiConfig.apiKeys || {}).some((k) => !!k)
+        || !!aiConfig.baseUrl
+
+      if (hasApiAccess) {
+        try {
+          const { generateText } = await import('ai')
+          const { createModelFromConfig } = await import('../../ai-providers/vercel-ai-sdk/model-factory.js')
+          const { model: languageModel } = await createModelFromConfig(
+            model ? { provider: aiConfig.provider || 'anthropic', model, baseUrl: aiConfig.baseUrl } : undefined,
+          )
+          const result = await generateText({ model: languageModel, prompt, abortSignal })
+          return result.text
+        } catch (err) {
+          console.warn(`atlas: direct API call failed (model=${model}), falling back to Claude Code CLI:`, err)
+        }
+      }
+
+      // Fallback: use Claude Code CLI with model override
+      const { askClaudeCode } = await import('../../ai-providers/claude-code/provider.js')
+      const { readAgentConfig } = await import('../../core/config.js')
+      const agentConfig = await readAgentConfig()
+      const result = await askClaudeCode(prompt, {
+        ...agentConfig.claudeCode,
+        model: model || undefined,
+        abortSignal,
+      })
       return result.text
     }
 
@@ -292,6 +370,14 @@ export class WebPlugin implements Plugin {
     const intervalMap: Record<string, string> = {
       '15m': '15m', '1h': '1h', '4h': '4h', '1d': '1d', '1w': '1w', '1M': '1M',
     }
+
+    // Build generic SDK clients map for DataBridge passthrough
+    const sdkClients: Partial<Record<DataSourceType, GenericClient>> = {}
+    if (equityClient) sdkClients.equity = equityClient as unknown as GenericClient
+    if (ctx.extensions?.cryptoClient) sdkClients.crypto = ctx.extensions.cryptoClient as GenericClient
+    if (ctx.extensions?.currencyClient) sdkClients.currency = ctx.extensions.currencyClient as GenericClient
+    if (ctx.extensions?.economyClient) sdkClients.economy = ctx.extensions.economyClient as GenericClient
+    if (ctx.extensions?.commodityClient) sdkClients.commodity = ctx.extensions.commodityClient as GenericClient
 
     const dataBridgeDeps: DataBridgeDeps = {
       fetchPrice: async (symbol: string, interval: string): Promise<PriceBar[]> => {
@@ -320,14 +406,55 @@ export class WebPlugin implements Plugin {
           return []
         }
       },
-      fetchMacro: async (_provider: string, _query: string, _symbols: string[]) => {
-        // Macro data (FRED series etc.) requires a dedicated macro client
-        // which is not currently available in the OpenBB adapter layer.
-        // Agents will receive empty macro data and rely on LLM knowledge.
-        return []
+      fetchMacro: async (provider: string, query: string, symbols: string[]) => {
+        // Route legacy macro sources through economy client if available
+        const econ = sdkClients.economy
+        if (!econ) return []
+        try {
+          if (query === 'fred' || provider === 'fred' || provider === 'federal_reserve' || query === 'fred_series') {
+            // FRED series: call fredSeries for each symbol
+            const results = []
+            for (const sym of symbols) {
+              const rows = await econ.fredSeries({ symbol: sym, limit: 5 })
+              for (const r of rows) {
+                results.push({
+                  symbol: sym,
+                  date: String(r.date ?? ''),
+                  value: Number(r.value ?? 0),
+                  label: String(r.title ?? ''),
+                })
+              }
+            }
+            return results
+          }
+          // EIA or other macro: try matching method name
+          if (query.startsWith('eia.') || provider === 'eia') {
+            const raw = query.startsWith('eia.') ? query.replace('eia.', '') : query
+            const methodName = 'get' + raw.replace(/_(\w)/g, (_, c) => c.toUpperCase()).replace(/^(\w)/, (_, c) => c.toUpperCase())
+            const fn = econ[methodName]
+            if (typeof fn === 'function') {
+              const rows = await fn.call(econ, {})
+              return rows.map((r: Record<string, unknown>) => ({
+                symbol: String(r.symbol ?? r.name ?? query),
+                date: String(r.date ?? ''),
+                value: Number(r.value ?? 0),
+              }))
+            }
+          }
+          return []
+        } catch (err) {
+          console.warn(`atlas: fetchMacro failed for ${provider}/${query}:`, err)
+          return []
+        }
       },
       newsStore: newsStore!,
+      clients: sdkClients,
+      newsRouter: new NewsRouter({ llmCall, aiEnabled: true, aiLimit: 10 }),
     }
+
+    // Store for backtest deps access
+    this.atlasLlmCall = llmCall
+    this.atlasDataBridgeDeps = dataBridgeDeps
 
     let dataFetch: (agent: AgentConfig, deptId: string) => Promise<string>
     let shouldRunAgent: (agent: AgentConfig, deptId: string) => Promise<boolean>
@@ -348,6 +475,29 @@ export class WebPlugin implements Plugin {
       dataFetch,
       shouldRunAgent,
       callbacks,
+      fetchReturn: async (ticker: string, date: string, days: number): Promise<number | null> => {
+        try {
+          const startDate = new Date(date)
+          const endDate = new Date(startDate)
+          endDate.setDate(endDate.getDate() + days + 2)
+          if (endDate.getTime() > Date.now()) return null
+
+          const bars = await dataBridgeDeps.fetchPrice(ticker, '1d')
+          if (bars.length < 2) return null
+
+          const signalIdx = bars.findIndex((b) => b.date >= date)
+          if (signalIdx < 0) return null
+          const futureIdx = Math.min(signalIdx + days, bars.length - 1)
+          if (futureIdx <= signalIdx) return null
+
+          const entryPrice = bars[signalIdx].close
+          const exitPrice = bars[futureIdx].close
+          if (entryPrice === 0) return null
+          return (exitPrice - entryPrice) / entryPrice
+        } catch {
+          return null
+        }
+      },
     })
 
     // Bug #1-2 fix: Register Atlas tools with ToolCenter so Alice can trigger analysis via conversation/cron
@@ -369,8 +519,26 @@ export class WebPlugin implements Plugin {
         }
         return ar
       },
+      getBacktestDeps: () => this.atlasConfig && this.atlasLlmCall && this.atlasDataBridgeDeps
+        ? { atlasConfig: this.atlasConfig, llmCall: this.atlasLlmCall, dataBridgeDeps: this.atlasDataBridgeDeps }
+        : null,
     })
     ctx.toolCenter.register(atlasTools, 'atlas')
+
+    // Auto-create default cron jobs for enabled departments (idempotent)
+    const existingJobs = ctx.cronEngine.list()
+    for (const dept of this.atlasConfig.departments.filter((d) => d.enabled)) {
+      const jobName = `atlas-${dept.id}`
+      if (!existingJobs.some((j) => j.name === jobName)) {
+        await ctx.cronEngine.add({
+          name: jobName,
+          schedule: { kind: 'every', every: '4h' },
+          payload: `Run Atlas research analysis for the ${dept.name} department. Call the atlasAnalysis tool with department="${dept.id}".`,
+          enabled: false, // disabled by default — user enables when ready
+        })
+        console.log(`atlas: created cron job "${jobName}" (disabled, every 4h)`)
+      }
+    }
 
     console.log(`atlas: initialized with ${this.atlasConfig.departments.filter(d => d.enabled).length} departments`)
   }

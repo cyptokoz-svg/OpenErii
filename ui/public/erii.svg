@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f472b6"/>
+      <stop offset="100%" stop-color="#c084fc"/>
+    </linearGradient>
+  </defs>
+  <g fill="url(#g)">
+    <path d="M12 12 C8 9,7 5,10 2.5 Q11 1,12 3.5 Q13 1,14 2.5 C17 5,16 9,12 12Z"/>
+    <path d="M12 12 C8 9,7 5,10 2.5 Q11 1,12 3.5 Q13 1,14 2.5 C17 5,16 9,12 12Z" transform="rotate(72 12 12)"/>
+    <path d="M12 12 C8 9,7 5,10 2.5 Q11 1,12 3.5 Q13 1,14 2.5 C17 5,16 9,12 12Z" transform="rotate(144 12 12)"/>
+    <path d="M12 12 C8 9,7 5,10 2.5 Q11 1,12 3.5 Q13 1,14 2.5 C17 5,16 9,12 12Z" transform="rotate(216 12 12)"/>
+    <path d="M12 12 C8 9,7 5,10 2.5 Q11 1,12 3.5 Q13 1,14 2.5 C17 5,16 9,12 12Z" transform="rotate(288 12 12)"/>
+    <circle cx="12" cy="12" r="2.5" opacity="0.4"/>
+    <circle cx="10.5" cy="10" r="0.6" opacity="0.6"/>
+    <circle cx="13.5" cy="10" r="0.6" opacity="0.6"/>
+    <circle cx="12" cy="8.5" r="0.6" opacity="0.6"/>
+    <circle cx="10.8" cy="12.8" r="0.6" opacity="0.6"/>
+    <circle cx="13.2" cy="12.8" r="0.6" opacity="0.6"/>
+  </g>
+</svg>

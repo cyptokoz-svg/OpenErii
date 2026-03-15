@@ -68,11 +68,19 @@ export interface Envelope {
 
 // ==================== Agent Config ====================
 
+export type DataSourceType =
+  | 'price' | 'news' | 'macro'                          // legacy
+  | 'equity' | 'economy' | 'crypto' | 'commodity' | 'currency'  // generic SDK clients
+
 export interface DataSourceConfig {
   provider: string
   query: string
   symbols?: string[]
-  type: 'price' | 'news' | 'macro'
+  type: DataSourceType
+  /** SDK client method name, e.g. 'getIncomeStatement', 'fredSeries'. */
+  method?: string
+  /** Params to pass directly to the SDK method. */
+  params?: Record<string, unknown>
 }
 
 export interface AgentConfig {
@@ -107,6 +115,8 @@ export interface AtlasConfig {
   model_tiers: Record<string, string>
   max_concurrency: number
   departments: DepartmentConfig[]
+  /** External Obsidian vault path — knowledge notes are mirrored here under Atlas/{departmentId}/ */
+  obsidian_vault_path?: string
 }
 
 // ==================== Layer Synthesis ====================
@@ -128,6 +138,10 @@ export interface AtlasRunOpts {
   focus?: string
   skip_layers?: Layer[]
   source_channel?: string
+  /** Signal to abort the pipeline run. */
+  abortSignal?: AbortSignal
+  /** Override date for signal recording (used by backtest). Defaults to today. */
+  dateOverride?: string
 }
 
 export interface AtlasReport {

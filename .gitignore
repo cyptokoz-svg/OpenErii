@@ -9,6 +9,7 @@ state.json
 
 .env
 .env.*
+.mcp.json
 
 # OS
 .DS_Store

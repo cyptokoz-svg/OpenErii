@@ -19,15 +19,47 @@ import type { Envelope } from './types.js'
 const STATE_DIR = resolve('data/atlas/state')
 const FRESHNESS_FILE = join(STATE_DIR, 'data_freshness.json')
 
-/** Real-time sources: always re-run, never skip via hash */
+/** Real-time sources: always re-run, never skip via hash.
+ *  Price/yfinance removed — use data hash comparison instead to avoid
+ *  wasting LLM calls when prices barely moved. */
 const ALWAYS_REALTIME = new Set([
-  'yfinance', 'yahoo', 'price',       // prices change every second
   'news', 'rss', 'gdelt',             // news is always fresh
   'twitter', 'telegram',              // social media
   'natural_events', 'maritime',       // risk events
   'climate', 'weather',               // weather daily
   'fear_greed',                       // sentiment daily
 ])
+
+/** Minimum price change (%) to trigger agent rerun. 1% = filter out noise for commodities. */
+const PRICE_CHANGE_THRESHOLD = 0.01
+
+/** Extract Close= values from formatted price context string. */
+function extractCloseValues(dataContext: string): Record<string, number> | null {
+  const matches = dataContext.matchAll(/\*\*(.+?)\*\*: Close=(\d+\.?\d*)/g)
+  const result: Record<string, number> = {}
+  let count = 0
+  for (const m of matches) {
+    result[m[1]] = parseFloat(m[2])
+    count++
+  }
+  return count > 0 ? result : null
+}
+
+/** Compute max absolute % change between two price snapshots. */
+function computeMaxPriceChange(
+  prev: Record<string, number>,
+  current: Record<string, number>,
+): number {
+  let maxChange = 0
+  for (const [key, curPrice] of Object.entries(current)) {
+    const prevPrice = prev[key]
+    if (prevPrice && prevPrice > 0) {
+      const change = Math.abs(curPrice - prevPrice) / prevPrice
+      if (change > maxChange) maxChange = change
+    }
+  }
+  return maxChange
+}
 
 // ==================== FreshnessTracker ====================
 
@@ -109,6 +141,74 @@ export class FreshnessTracker {
 
     console.log(`atlas: ${agentName} — all sources unchanged → using cached envelope`)
     return false
+  }
+
+  // ==================== Agent-level Data Hash ====================
+
+  /**
+   * Check if agent should rerun using the actual fetched data context.
+   *
+   * - If no data sources → always rerun (L3/L4 depend on upstream synthesis)
+   * - If agent has news source → always rerun
+   * - If agent has price source → only rerun if prices moved > PRICE_CHANGE_THRESHOLD
+   * - Otherwise hash compare for slow sources (FRED, etc.)
+   */
+  shouldAgentRerunWithData(
+    agentName: string,
+    dataSources: Array<{ provider: string; type: string }>,
+    dataContext: string,
+  ): boolean {
+    if (dataSources.length === 0) return true // L3/L4 depend on upstream
+
+    // Any real-time source (news, social) → always rerun
+    for (const source of dataSources) {
+      const key = source.provider || source.type
+      if (ALWAYS_REALTIME.has(key)) return true
+    }
+
+    // Price sources: compare Close values, only rerun if moved > threshold
+    const hasPrice = dataSources.some((s) => s.type === 'price')
+    if (hasPrice) {
+      const stateKey = `agent-prices:${agentName}`
+      const currentPrices = extractCloseValues(dataContext)
+      const prevPricesStr = this.state[stateKey]
+
+      if (prevPricesStr && currentPrices) {
+        const prevPrices = JSON.parse(prevPricesStr) as Record<string, number>
+        const maxChange = computeMaxPriceChange(prevPrices, currentPrices)
+        if (maxChange < PRICE_CHANGE_THRESHOLD) {
+          console.log(`atlas: ${agentName} — prices moved only ${(maxChange * 100).toFixed(2)}% → using cached envelope`)
+          return false
+        }
+      }
+
+      // Store current prices for next comparison
+      if (currentPrices) {
+        this.state[stateKey] = JSON.stringify(currentPrices)
+      }
+      return true
+    }
+
+    // Slow sources: hash the full data context
+    const hash = this.computeHash(dataContext)
+    const stateKey = `agent-ctx:${agentName}`
+    if (!this.isSourceChanged(stateKey, hash)) {
+      console.log(`atlas: ${agentName} — data unchanged → using cached envelope`)
+      return false
+    }
+
+    return true
+  }
+
+  /** Update stored hash after agent runs successfully. */
+  markAgentDataSeen(agentName: string, dataContext: string): void {
+    const hash = this.computeHash(dataContext)
+    this.state[`agent-ctx:${agentName}`] = hash
+  }
+
+  /** Persist all state to disk (hashes + agent context hashes). */
+  async persistState(): Promise<void> {
+    await this.saveState()
   }
 
   // ==================== Envelope Cache ====================

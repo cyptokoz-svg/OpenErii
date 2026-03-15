@@ -17,7 +17,7 @@ export function createChannelsRoutes({ sessions, sseByChannel }: ChannelsDeps) {
   app.get('/', async (c) => {
     const subChannels = await readWebSubchannels()
     const channels = [
-      { id: 'default', label: 'Alice' },
+      { id: 'default', label: 'Erii' },
       ...subChannels,
     ]
     return c.json({ channels })
@@ -120,6 +120,7 @@ export function createChannelsRoutes({ sessions, sseByChannel }: ChannelsDeps) {
   app.delete('/:id', async (c) => {
     const id = c.req.param('id')
     if (id === 'default') return c.json({ error: 'cannot delete default channel' }, 400)
+    if (id.startsWith('atlas-')) return c.json({ error: 'atlas department channels are system-managed — disable the department in Atlas config to remove' }, 400)
 
     const existing = await readWebSubchannels()
     if (!existing.find((ch) => ch.id === id)) return c.json({ error: 'channel not found' }, 404)

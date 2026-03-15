@@ -11,7 +11,14 @@ import { z } from 'zod'
 
 export const KnowledgeUpdateSchema = z.object({
   file: z.string().min(1),
-  type: z.enum(['insight', 'event', 'lesson', 'pattern', 'seasonal']).default('insight'),
+  type: z.preprocess(
+    (v) => {
+      const valid = ['insight', 'event', 'lesson', 'pattern', 'seasonal']
+      const s = String(v ?? 'insight').toLowerCase().trim()
+      return valid.includes(s) ? s : 'insight'
+    },
+    z.enum(['insight', 'event', 'lesson', 'pattern', 'seasonal']),
+  ).default('insight'),
   content: z.string().min(1),
 })
 
@@ -120,8 +127,53 @@ export function parseAgentOutput(raw: string): AgentOutput {
     cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '')
   }
 
-  const parsed = JSON.parse(cleaned)
-  return AgentOutputSchema.parse(parsed)
+  // If the response doesn't start with '{', try to extract JSON from the text
+  // (LLMs sometimes prepend conversational text before the JSON)
+  if (!cleaned.startsWith('{')) {
+    const firstBrace = cleaned.indexOf('{')
+    const lastBrace = cleaned.lastIndexOf('}')
+    if (firstBrace !== -1 && lastBrace > firstBrace) {
+      cleaned = cleaned.slice(firstBrace, lastBrace + 1)
+    }
+  }
+
+  // Try parsing directly first
+  try {
+    const parsed = JSON.parse(cleaned)
+    return AgentOutputSchema.parse(parsed)
+  } catch {
+    // If direct parse fails, try finding ```json blocks in the original text
+    const codeBlockMatch = raw.match(/```(?:json)?\s*\n([\s\S]*?)\n```/)
+    if (codeBlockMatch) {
+      const parsed = JSON.parse(codeBlockMatch[1].trim())
+      return AgentOutputSchema.parse(parsed)
+    }
+
+    // Try finding the outermost balanced braces containing "signal"
+    const signalIdx = raw.indexOf('"signal"')
+    if (signalIdx !== -1) {
+      // Walk backwards to find the opening brace
+      let start = raw.lastIndexOf('{', signalIdx)
+      if (start !== -1) {
+        // Walk forward to find matching closing brace
+        let depth = 0
+        for (let i = start; i < raw.length; i++) {
+          if (raw[i] === '{') depth++
+          else if (raw[i] === '}') {
+            depth--
+            if (depth === 0) {
+              const candidate = raw.slice(start, i + 1)
+              const parsed = JSON.parse(candidate)
+              return AgentOutputSchema.parse(parsed)
+            }
+          }
+        }
+      }
+    }
+
+    // Re-throw original error
+    throw new Error(`${cleaned.slice(0, 60)}... is not valid JSON`)
+  }
 }
 
 /**

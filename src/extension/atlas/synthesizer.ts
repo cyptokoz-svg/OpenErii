@@ -54,7 +54,7 @@ function resolveDirection(acc: VoteAccumulator): Direction {
   return 'NEUTRAL'
 }
 
-function resolveConviction(acc: VoteAccumulator, direction: Direction): number {
+function resolveConviction(acc: VoteAccumulator, _direction: Direction): number {
   if (acc.total_weight === 0) return 0
 
   const raw = Math.abs(acc.weighted_conviction) / acc.total_weight

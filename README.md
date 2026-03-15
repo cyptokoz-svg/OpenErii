@@ -224,7 +224,7 @@ data/
 ## Roadmap
 
 - [ ] **More research departments** — crypto, equities, on-chain data analysis
-- [ ] **Backtest Mode B** — position-level simulation with OHLCV bar-by-bar entry/exit using CIO envelope parameters
+- [ ] **Backtest analytics** — deeper evolution tracking, prompt diff visualization, and agent performance regression analysis
 - [ ] **Live signal tracking** — automated forward-return scoring with real-time PnL attribution
 - [ ] **Multi-department synthesis** — cross-department signal aggregation for portfolio-level decisions
 - [ ] **Agent marketplace** — share and import evolved agent prompts across departments

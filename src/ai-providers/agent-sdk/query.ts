@@ -10,7 +10,7 @@ import type { McpSdkServerConfigWithInstance } from '@anthropic-ai/claude-agent-
 import { pino } from 'pino'
 import type { ContentBlock } from '../../core/session.js'
 import { readAIProviderConfig } from '../../core/config.js'
-import { logToolCall } from '../log-tool-call.js'
+import { logToolCall } from '../utils.js'
 
 const logger = pino({
   transport: { target: 'pino/file', options: { destination: 'logs/agent-sdk.log', mkdir: true } },

@@ -28,5 +28,10 @@ Thumbs.db
 coverage/
 
 # Claude Code
-CLAUDE.md
 .claude/
+packages/ibkr/ref/source/JavaClient/
+packages/ibkr/ref/source/cppclient/
+packages/ibkr/ref/samples/Java/
+packages/ibkr/ref/samples/Cpp/
+packages/ibkr/ref/CMakeLists.txt
+packages/ibkr/src/protobuf/

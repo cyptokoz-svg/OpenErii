@@ -192,6 +192,11 @@ export function ChannelConfigModal({ channel, onClose, onSaved }: ChannelConfigM
                   placeholder="https://api.openai.com/v1"
                   className={inputClass}
                 />
+                {vModelProvider === 'anthropic' && (
+                  <p className="mt-1 text-xs text-text-muted/60">
+                    Anthropic-compatible APIs: URL must end with <code className="font-mono">/v1</code> — e.g. <code className="font-mono">https://example.com/anthropic/v1</code>
+                  </p>
+                )}
               </div>
 
               <div>

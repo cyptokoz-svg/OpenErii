@@ -1,6 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { wireAccountTrading } from './factory.js'
+import { wireAccountTrading, createAlpacaFromConfig, createCcxtFromConfig } from './factory.js'
 import { MockTradingAccount, makeOrderResult } from './__test__/mock-account.js'
+
+vi.mock('./providers/alpaca/index.js', () => ({
+  AlpacaAccount: vi.fn(function (this: any, cfg: unknown) { this._config = cfg; this.id = 'alpaca-mock'; this.provider = 'alpaca' }),
+}))
+
+vi.mock('./providers/ccxt/index.js', () => ({
+  CcxtAccount: vi.fn(function (this: any, cfg: unknown) { this._config = cfg; this.id = 'ccxt-mock'; this.provider = 'ccxt' }),
+}))
 
 describe('wireAccountTrading', () => {
   let account: MockTradingAccount
@@ -96,5 +104,63 @@ describe('wireAccountTrading', () => {
     expect(account.getAccount).toHaveBeenCalled()
     expect(account.getPositions).toHaveBeenCalled()
     expect(account.getOrders).toHaveBeenCalled()
+  })
+})
+
+// ==================== createAlpacaFromConfig ====================
+
+describe('createAlpacaFromConfig', () => {
+  it('returns null when provider.type is none', () => {
+    const result = createAlpacaFromConfig({ provider: { type: 'none' } } as any)
+    expect(result).toBeNull()
+  })
+
+  it('returns AlpacaAccount instance when provider.type is alpaca', () => {
+    const result = createAlpacaFromConfig({
+      provider: { type: 'alpaca', apiKey: 'key123', secretKey: 'secret456', paper: true },
+    } as any)
+    expect(result).not.toBeNull()
+    expect((result as any)._config).toMatchObject({ apiKey: 'key123', secretKey: 'secret456', paper: true })
+  })
+
+  it('passes empty strings for missing apiKey/secretKey', () => {
+    const result = createAlpacaFromConfig({
+      provider: { type: 'alpaca', paper: false },
+    } as any)
+    expect((result as any)._config.apiKey).toBe('')
+    expect((result as any)._config.secretKey).toBe('')
+  })
+})
+
+// ==================== createCcxtFromConfig ====================
+
+describe('createCcxtFromConfig', () => {
+  it('returns null when provider.type is none', () => {
+    const result = createCcxtFromConfig({ provider: { type: 'none' } } as any)
+    expect(result).toBeNull()
+  })
+
+  it('returns CcxtAccount instance with exchange config', () => {
+    const result = createCcxtFromConfig({
+      provider: {
+        type: 'bybit',
+        exchange: 'bybit',
+        apiKey: 'k',
+        apiSecret: 's',
+        sandbox: true,
+        demoTrading: false,
+        defaultMarketType: 'swap',
+      },
+    } as any)
+    expect(result).not.toBeNull()
+    expect((result as any)._config).toMatchObject({ exchange: 'bybit', sandbox: true })
+  })
+
+  it('passes empty strings for missing apiKey/apiSecret', () => {
+    const result = createCcxtFromConfig({
+      provider: { type: 'bybit', exchange: 'bybit' },
+    } as any)
+    expect((result as any)._config.apiKey).toBe('')
+    expect((result as any)._config.apiSecret).toBe('')
   })
 })

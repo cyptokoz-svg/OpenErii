@@ -375,7 +375,39 @@ export function toModelMessages(entries: SessionEntry[]): SDKModelMessage[] {
     // system role messages (non-boundary) are skipped — they don't map to SDK messages
   }
 
-  return messages
+  // Sanitize: remove tool-call entries that have no matching tool-result.
+  // This can happen when compaction truncates between a tool_use and its result,
+  // or when a session was interrupted mid-tool-call.
+  return sanitizeToolMessages(messages)
+}
+
+/** Strip orphaned tool-call entries that have no matching tool-result downstream. */
+function sanitizeToolMessages(messages: SDKModelMessage[]): SDKModelMessage[] {
+  // Collect all tool-result IDs
+  const resultIds = new Set<string>()
+  for (const msg of messages) {
+    if (msg.role === 'tool') {
+      for (const part of msg.content) {
+        resultIds.add(part.toolCallId)
+      }
+    }
+  }
+
+  const out: SDKModelMessage[] = []
+  for (const msg of messages) {
+    if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+      const filtered = msg.content.filter(
+        (part) => part.type !== 'tool-call' || resultIds.has(part.toolCallId),
+      )
+      if (filtered.length > 0) {
+        out.push({ ...msg, content: filtered })
+      }
+      // Drop assistant message entirely if only orphaned tool-calls remained
+    } else {
+      out.push(msg)
+    }
+  }
+  return out
 }
 
 /** Max characters for a tool input/output summary line. */

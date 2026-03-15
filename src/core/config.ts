@@ -300,14 +300,14 @@ async function parseAndSeed<T>(filename: string, schema: z.ZodType<T>, raw: unkn
 }
 
 export async function loadConfig(): Promise<Config> {
-  const files = ['engine.json', 'agent.json', 'crypto.json', 'securities.json', 'openbb.json', 'compaction.json', 'ai-provider.json', 'heartbeat.json', 'connectors.json', 'news-collector.json', 'tools.json'] as const
+  const files = ['engine.json', 'agent.json', 'crypto.json', 'securities.json', 'openbb.json', 'compaction.json', 'ai-provider-manager.json', 'heartbeat.json', 'connectors.json', 'news-collector.json', 'tools.json'] as const
   const raws = await Promise.all(files.map((f) => loadJsonFile(f)))
 
   // TODO: remove all migration blocks before v1.0 — no stable release yet, breaking changes are fine
   // ---------- Migration: consolidate old ai-provider + model + api-keys → ai-provider ----------
   const aiProviderRaw = raws[6] as Record<string, unknown> | undefined
   if (aiProviderRaw && !('backend' in aiProviderRaw)) {
-    // Old format detected — merge model.json + api-keys.json into ai-provider.json
+    // Old format detected — merge model.json + api-keys.json into ai-provider-manager.json
     const oldModel = await loadJsonFile('model.json') as Record<string, unknown> | undefined
     const oldKeys = await loadJsonFile('api-keys.json') as Record<string, unknown> | undefined
     const migrated = {
@@ -319,7 +319,7 @@ export async function loadConfig(): Promise<Config> {
     }
     raws[6] = migrated
     await mkdir(CONFIG_DIR, { recursive: true })
-    await writeFile(resolve(CONFIG_DIR, 'ai-provider.json'), JSON.stringify(migrated, null, 2) + '\n')
+    await writeFile(resolve(CONFIG_DIR, 'ai-provider-manager.json'), JSON.stringify(migrated, null, 2) + '\n')
     await removeJsonFile('model.json')
     await removeJsonFile('api-keys.json')
   }
@@ -491,7 +491,7 @@ export async function readAgentConfig() {
 /** Read AI provider config from disk (called per-request for hot-reload). */
 export async function readAIProviderConfig() {
   try {
-    const raw = JSON.parse(await readFile(resolve(CONFIG_DIR, 'ai-provider.json'), 'utf-8'))
+    const raw = JSON.parse(await readFile(resolve(CONFIG_DIR, 'ai-provider-manager.json'), 'utf-8'))
     return aiProviderSchema.parse(raw)
   } catch {
     return aiProviderSchema.parse({})
@@ -522,18 +522,18 @@ export async function readToolsConfig() {
 
 export type AIBackend = 'claude-code' | 'vercel-ai-sdk' | 'agent-sdk'
 
-/** Read the current AI backend from ai-provider.json. */
+/** Read the current AI backend from ai-provider-manager.json. */
 export async function readAIBackend(): Promise<{ backend: AIBackend }> {
   const config = await readAIProviderConfig()
   return { backend: config.backend }
 }
 
-/** Switch the AI backend in ai-provider.json (preserves other fields). */
+/** Switch the AI backend in ai-provider-manager.json (preserves other fields). */
 export async function writeAIBackend(backend: AIBackend): Promise<void> {
   const current = await readAIProviderConfig()
   const updated = { ...current, backend }
   await mkdir(CONFIG_DIR, { recursive: true })
-  await writeFile(resolve(CONFIG_DIR, 'ai-provider.json'), JSON.stringify(updated, null, 2) + '\n')
+  await writeFile(resolve(CONFIG_DIR, 'ai-provider-manager.json'), JSON.stringify(updated, null, 2) + '\n')
 }
 
 // ==================== Writer ====================
@@ -561,7 +561,7 @@ const sectionFiles: Record<ConfigSection, string> = {
   securities: 'securities.json',
   openbb: 'openbb.json',
   compaction: 'compaction.json',
-  aiProvider: 'ai-provider.json',
+  aiProvider: 'ai-provider-manager.json',
   heartbeat: 'heartbeat.json',
   connectors: 'connectors.json',
   newsCollector: 'news-collector.json',

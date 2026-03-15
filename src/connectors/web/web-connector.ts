@@ -10,7 +10,7 @@
  */
 
 import type { Connector, ConnectorCapabilities, SendPayload, SendResult } from '../types.js'
-import type { StreamableResult } from '../../core/ai-provider.js'
+import type { StreamableResult } from '../../core/ai-provider-manager.js'
 import type { SSEClient } from './routes/chat.js'
 import { SessionStore, type ContentBlock } from '../../core/session.js'
 import { persistMedia } from '../../core/media-store.js'

@@ -1,6 +1,6 @@
 import { ToolLoopAgent, stepCountIs } from 'ai'
 import type { LanguageModel, Tool } from 'ai'
-import { logToolCall } from '../log-tool-call.js'
+import { logToolCall } from '../utils.js'
 
 /**
  * Create a generic ToolLoopAgent with externally-provided tools.

@@ -1,4 +1,4 @@
-import type { ISessionStore, SDKModelMessage } from '../core/session.js'
+import type { ISessionStore, SessionEntry } from '../core/session.js'
 import type { CompactionConfig, CompactionResult } from '../core/compaction.js'
 import type { MediaAttachment } from '../core/types.js'
 
@@ -19,46 +19,39 @@ export interface ProviderResult {
   mediaUrls?: string[]
 }
 
-// ==================== GenerateProvider ====================
-
-/**
- * Input prepared by AgentCenter, dispatched by provider.inputKind.
- *
- * - 'text': Claude Code / Agent SDK — single string prompt with <chat_history> baked in.
- * - 'messages': Vercel AI SDK — structured ModelMessage[] (history carried natively).
- */
-export type GenerateInput =
-  | { kind: 'text'; prompt: string; systemPrompt?: string }
-  | { kind: 'messages'; messages: SDKModelMessage[]; systemPrompt?: string }
+// ==================== GenerateOpts ====================
 
 /** Per-request options passed through to the underlying provider. */
 export interface GenerateOpts {
+  /** System prompt override for this call. */
+  systemPrompt?: string
+  /** Preamble text for chat history (text providers only). */
+  historyPreamble?: string
+  /** Max history entries to include (text providers only). */
+  maxHistoryEntries?: number
   disabledTools?: string[]
   vercelAiSdk?: { provider: string; model: string; baseUrl?: string; apiKey?: string }
   agentSdk?: { model?: string; apiKey?: string; baseUrl?: string }
 }
 
+// ==================== AIProvider ====================
+
 /**
  * Slim provider interface — pure data-source adapter.
  *
- * Does NOT touch session management. AgentCenter prepares the input,
- * the provider calls the backend and yields ProviderEvents.
+ * Receives raw session entries + current prompt. Each provider decides
+ * how to serialize history for its backend (text string, structured messages, etc.).
  */
-export interface GenerateProvider {
-  /** Which input format this provider expects. */
-  readonly inputKind: 'text' | 'messages'
+export interface AIProvider {
   /** Session log provenance tag. */
   readonly providerTag: 'vercel-ai' | 'claude-code' | 'agent-sdk'
   /** Stateless one-shot prompt (used for compaction summarization, etc.). */
   ask(prompt: string): Promise<ProviderResult>
   /** Stream events from the backend. Yields tool_use/tool_result/text, then done. */
-  generate(input: GenerateInput, opts?: GenerateOpts): AsyncIterable<ProviderEvent>
+  generate(entries: SessionEntry[], prompt: string, opts?: GenerateOpts): AsyncIterable<ProviderEvent>
   /**
    * Optional: custom compaction strategy. If implemented, AgentCenter delegates
    * compaction to the provider instead of using the default compactIfNeeded.
-   *
-   * Use case: providers with native server-side compaction (e.g. Anthropic API
-   * compact-2026-01-12) can bypass the local JSONL-based summarization.
    */
   compact?(session: ISessionStore, config: CompactionConfig): Promise<CompactionResult>
 }

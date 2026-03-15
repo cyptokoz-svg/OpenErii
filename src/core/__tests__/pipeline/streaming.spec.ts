@@ -5,7 +5,7 @@
  * PromiseLike resolution, multi-consumer cursors, and error propagation.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { StreamableResult, type ProviderEvent } from '../../ai-provider.js'
+import { StreamableResult, type ProviderEvent } from '../../ai-provider-manager.js'
 import {
   FakeProvider,
   MemorySessionStore,
@@ -32,7 +32,8 @@ vi.mock('../../media-store.js', () => ({
   resolveMediaPath: vi.fn((name: string) => `/mock/media/${name}`),
 }))
 
-vi.mock('../../../ai-providers/log-tool-call.js', () => ({
+vi.mock('@/ai-providers/utils.js', async (importOriginal) => ({
+  ...(await importOriginal()),
   logToolCall: vi.fn(),
 }))
 

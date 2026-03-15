@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 import { pino } from 'pino'
 import type { ClaudeCodeConfig, ClaudeCodeResult, ClaudeCodeMessage } from './types.js'
 import type { ContentBlock } from '../../core/session.js'
-import { logToolCall } from '../log-tool-call.js'
+import { logToolCall } from '../utils.js'
 
 const logger = pino({
   transport: { target: 'pino/file', options: { destination: 'logs/claude-code.log', mkdir: true } },

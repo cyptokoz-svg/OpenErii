@@ -141,6 +141,48 @@ describe('Trading Agent', () => {
     expect(tradeExecuted).toBe(true)
   })
 
+  it('handles parallel tool calls in a single step', async () => {
+    const called: string[] = []
+
+    // Model returns two tool calls in one step (parallel), then a final text response
+    const model = sequentialModel([
+      mockResult(
+        [
+          { type: 'tool-call', toolCallId: 'c1', toolName: 'getPrice', input: JSON.stringify({ symbol: 'BTC' }) },
+          { type: 'tool-call', toolCallId: 'c2', toolName: 'getPrice', input: JSON.stringify({ symbol: 'ETH' }) },
+        ],
+        'tool-calls',
+      ),
+      mockText('BTC and ETH prices fetched.'),
+    ])
+
+    const result = await generateText({
+      model,
+      prompt: 'Get BTC and ETH prices',
+      tools: {
+        getPrice: tool({
+          description: 'Get current price',
+          inputSchema: z.object({ symbol: z.string() }),
+          execute: async ({ symbol }) => {
+            called.push(symbol)
+            return { symbol, price: symbol === 'BTC' ? 95000 : 3200 }
+          },
+        }),
+      },
+      stopWhen: stepCountIs(10),
+    })
+
+    // Both tools executed in the same step
+    expect(called).toContain('BTC')
+    expect(called).toContain('ETH')
+    expect(result.steps[0].toolCalls).toHaveLength(2)
+    expect(result.steps[0].toolResults).toHaveLength(2)
+    // SDK emits tool_use IDs that match tool_result IDs in the same step
+    const callIds = result.steps[0].toolCalls.map(tc => tc.toolCallId)
+    const resultIds = result.steps[0].toolResults.map(tr => tr.toolCallId)
+    expect(callIds.sort()).toEqual(resultIds.sort())
+  })
+
   it('agent stops when no tools are needed', async () => {
     const model = sequentialModel([
       mockText('Current portfolio looks healthy, no action needed.'),

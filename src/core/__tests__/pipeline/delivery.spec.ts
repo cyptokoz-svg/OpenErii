@@ -5,7 +5,7 @@
  * fallback to send, interaction tracking, and error resilience.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { StreamableResult, type ProviderEvent } from '../../ai-provider.js'
+import { StreamableResult, type ProviderEvent } from '../../ai-provider-manager.js'
 import { ConnectorCenter } from '../../connector-center.js'
 import { createEventLog } from '../../event-log.js'
 import type { MediaAttachment } from '../../types.js'
@@ -30,7 +30,8 @@ vi.mock('../../media-store.js', () => ({
   resolveMediaPath: vi.fn((name: string) => `/mock/media/${name}`),
 }))
 
-vi.mock('../../../ai-providers/log-tool-call.js', () => ({
+vi.mock('@/ai-providers/utils.js', async (importOriginal) => ({
+  ...(await importOriginal()),
   logToolCall: vi.fn(),
 }))
 

@@ -35,7 +35,8 @@ vi.mock('../../media-store.js', () => ({
   resolveMediaPath: vi.fn((name: string) => `/mock/media/${name}`),
 }))
 
-vi.mock('../../../ai-providers/log-tool-call.js', () => ({
+vi.mock('@/ai-providers/utils.js', async (importOriginal) => ({
+  ...(await importOriginal()),
   logToolCall: vi.fn(),
 }))
 

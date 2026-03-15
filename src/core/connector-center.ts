@@ -12,7 +12,7 @@
 
 import type { EventLog } from './event-log.js'
 import type { MediaAttachment } from './types.js'
-import type { StreamableResult } from './ai-provider.js'
+import type { StreamableResult } from './ai-provider-manager.js'
 import type { Connector, SendPayload, SendResult } from '../connectors/types.js'
 
 export type { Connector, SendPayload, SendResult, ConnectorCapabilities } from '../connectors/types.js'

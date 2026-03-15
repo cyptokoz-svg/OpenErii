@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { parseRSSXml } from './rss-parser'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { parseRSSXml, fetchAndParseFeed } from './rss-parser'
 
 describe('parseRSSXml', () => {
   it('parses standard RSS 2.0 items', () => {
@@ -126,5 +126,71 @@ describe('parseRSSXml', () => {
 
     const items = parseRSSXml(xml)
     expect(items[0].content).toBe('This is the full article text with much more detail.')
+  })
+})
+
+// ==================== fetchAndParseFeed ====================
+
+const MINIMAL_RSS = `<?xml version="1.0"?><rss version="2.0"><channel>
+  <item><title>Test</title><description>Body</description></item>
+</channel></rss>`
+
+function mockOkResponse(body: string): Response {
+  return {
+    ok: true,
+    status: 200,
+    statusText: 'OK',
+    text: () => Promise.resolve(body),
+  } as unknown as Response
+}
+
+function mockErrorResponse(status: number, statusText: string): Response {
+  return { ok: false, status, statusText, text: () => Promise.resolve('') } as unknown as Response
+}
+
+describe('fetchAndParseFeed', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('returns parsed items on successful fetch', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockOkResponse(MINIMAL_RSS))
+    const items = await fetchAndParseFeed('https://example.com/feed')
+    expect(items).toHaveLength(1)
+    expect(items[0].title).toBe('Test')
+  })
+
+  it('retries once after a network failure and succeeds', async () => {
+    // Patch setTimeout to execute instantly so the test doesn't wait 2s
+    vi.spyOn(globalThis, 'setTimeout').mockImplementation((fn: any) => { fn(); return 0 as any })
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      .mockRejectedValueOnce(new Error('network error'))
+      .mockResolvedValueOnce(mockOkResponse(MINIMAL_RSS))
+
+    const items = await fetchAndParseFeed('https://example.com/feed', 1)
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+    expect(items).toHaveLength(1)
+  })
+
+  it('throws after all retries are exhausted', async () => {
+    vi.spyOn(globalThis, 'setTimeout').mockImplementation((fn: any) => { fn(); return 0 as any })
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('always fails'))
+    await expect(fetchAndParseFeed('https://example.com/feed', 1)).rejects.toThrow('always fails')
+  })
+
+  it('throws on HTTP error status without retrying if called with retries=0', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockErrorResponse(404, 'Not Found'))
+    await expect(fetchAndParseFeed('https://example.com/feed', 0)).rejects.toThrow('404')
+  })
+
+  it('retries on HTTP error response and succeeds on second attempt', async () => {
+    vi.spyOn(globalThis, 'setTimeout').mockImplementation((fn: any) => { fn(); return 0 as any })
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(mockErrorResponse(503, 'Service Unavailable'))
+      .mockResolvedValueOnce(mockOkResponse(MINIMAL_RSS))
+
+    const items = await fetchAndParseFeed('https://example.com/feed', 1)
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+    expect(items).toHaveLength(1)
   })
 })

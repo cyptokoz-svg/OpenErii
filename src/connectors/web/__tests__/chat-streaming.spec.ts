@@ -11,7 +11,7 @@ import { createChannel } from '../../../core/async-channel.js'
 import {
   StreamableResult,
   type ProviderEvent,
-} from '../../../core/ai-provider.js'
+} from '../../../core/ai-provider-manager.js'
 import {
   FakeProvider,
   MemorySessionStore,
@@ -38,7 +38,8 @@ vi.mock('../../../core/media-store.js', () => ({
   resolveMediaPath: vi.fn((name: string) => `/mock/media/${name}`),
 }))
 
-vi.mock('../../../ai-providers/log-tool-call.js', () => ({
+vi.mock('@/ai-providers/utils.js', async (importOriginal) => ({
+  ...(await importOriginal()),
   logToolCall: vi.fn(),
 }))
 

@@ -35,7 +35,8 @@ vi.mock('../../media-store.js', () => ({
   resolveMediaPath: vi.fn((name: string) => `/mock/media/${name}`),
 }))
 
-vi.mock('../../../ai-providers/log-tool-call.js', () => ({
+vi.mock('@/ai-providers/utils.js', async (importOriginal) => ({
+  ...(await importOriginal()),
   logToolCall: vi.fn(),
 }))
 
@@ -391,6 +392,72 @@ describe('AgentCenter — session persistence', () => {
     const blocks = blocksOf(firstFlush!)
     expect(blocks[0]).toEqual({ type: 'text', text: 'Let me check...' })
     expect(blocks[1]).toMatchObject({ type: 'tool_use', name: 'lookup' })
+  })
+
+  it('A16: parallel tool calls in one step land in a single user message', async () => {
+    // Simulates what Vercel AI SDK emits when the model calls multiple tools at once:
+    // all tool_use events come first, then all tool_result events (one step).
+    const provider = new FakeProvider([
+      toolUseEvent('t1', 'get_price', { symbol: 'BTC' }),
+      toolUseEvent('t2', 'get_price', { symbol: 'ETH' }),
+      toolUseEvent('t3', 'get_price', { symbol: 'SOL' }),
+      toolResultEvent('t1', '95000'),
+      toolResultEvent('t2', '3200'),
+      toolResultEvent('t3', '140'),
+      textEvent('BTC $95k, ETH $3.2k, SOL $140'),
+      doneEvent('BTC $95k, ETH $3.2k, SOL $140'),
+    ])
+    const ac = makeAgentCenter(provider)
+    const session = new MemorySessionStore()
+
+    await ac.askWithSession('prices?', session)
+
+    const entries = await session.readAll()
+    const toolResultEntries = userEntries(entries).filter(u =>
+      Array.isArray(u.message.content) &&
+      (u.message.content as ContentBlock[]).some(b => b.type === 'tool_result'),
+    )
+
+    // All 3 results must be in a single user message — not 3 separate ones.
+    // This is required by Vercel AI SDK: toModelMessages() will throw
+    // MissingToolResultsError if results are spread across multiple messages.
+    expect(toolResultEntries).toHaveLength(1)
+    const resultBlocks = blocksOf(toolResultEntries[0]).filter(b => b.type === 'tool_result')
+    expect(resultBlocks).toHaveLength(3)
+    expect(resultBlocks.map(b => (b as { tool_use_id: string }).tool_use_id)).toEqual(['t1', 't2', 't3'])
+  })
+
+  it('A17: media in tool_result content is extracted exactly once by AgentCenter when provider done.media is empty', async () => {
+    const { persistMedia } = await import('../../media-store.js')
+    vi.mocked(persistMedia).mockResolvedValueOnce('2026-03-14/screenshot.png')
+
+    const toolResultContent = JSON.stringify({
+      content: [{ type: 'text', text: 'MEDIA:/tmp/screenshot.png' }],
+    })
+
+    // Simulates fixed ClaudeCode/AgentSdk provider behavior:
+    // - tool_result content contains MEDIA marker (raw content passed through)
+    // - done event carries empty media (provider does NOT extract from tool_result)
+    // AgentCenter is the sole extractor — must call persistMedia exactly once.
+    const provider = new FakeProvider([
+      toolUseEvent('t1', 'browser', {}),
+      toolResultEvent('t1', toolResultContent),
+      textEvent('screenshot taken'),
+      doneEvent('screenshot taken'),
+    ])
+    const ac = makeAgentCenter(provider)
+    const session = new MemorySessionStore()
+
+    await ac.askWithSession('take screenshot', session)
+
+    // persistMedia must be called exactly once — single extraction path
+    expect(vi.mocked(persistMedia)).toHaveBeenCalledTimes(1)
+
+    const assistants = assistantEntries(await session.readAll())
+    const finalBlocks = blocksOf(assistants[assistants.length - 1])
+    const imageBlocks = finalBlocks.filter(b => b.type === 'image')
+    expect(imageBlocks).toHaveLength(1)
+    expect(imageBlocks[0]).toEqual({ type: 'image', url: '/api/media/2026-03-14/screenshot.png' })
   })
 
   it('A15: providerTag carries through to intermediate writes too', async () => {

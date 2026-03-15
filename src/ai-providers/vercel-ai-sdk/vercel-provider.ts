@@ -7,16 +7,17 @@
  */
 
 import type { ModelMessage, Tool } from 'ai'
-import type { ProviderResult, ProviderEvent, GenerateProvider, GenerateInput, GenerateOpts } from '../types.js'
+import type { ProviderResult, ProviderEvent, AIProvider, GenerateOpts } from '../types.js'
+import type { SessionEntry } from '../../core/session.js'
 import type { Agent } from './agent.js'
 import type { MediaAttachment } from '../../core/types.js'
+import { toModelMessages } from '../../core/session.js'
 import { extractMediaFromToolOutput } from '../../core/media.js'
 import { createModelFromConfig, type ModelOverride } from './model-factory.js'
 import { createAgent } from './agent.js'
 import { createChannel } from '../../core/async-channel.js'
 
-export class VercelAIProvider implements GenerateProvider {
-  readonly inputKind = 'messages' as const
+export class VercelAIProvider implements AIProvider {
   readonly providerTag = 'vercel-ai' as const
   private cachedKey: string | null = null
   private cachedToolCount: number = 0
@@ -69,16 +70,16 @@ export class VercelAIProvider implements GenerateProvider {
     return { text: result.text ?? '', media }
   }
 
-  async *generate(input: GenerateInput, opts?: GenerateOpts): AsyncGenerator<ProviderEvent> {
-    if (input.kind !== 'messages') throw new Error('VercelAIProvider expects messages input')
+  async *generate(entries: SessionEntry[], _prompt: string, opts?: GenerateOpts): AsyncGenerator<ProviderEvent> {
+    const messages = toModelMessages(entries)
 
-    const agent = await this.resolveAgent(input.systemPrompt, opts?.disabledTools, opts?.vercelAiSdk)
+    const agent = await this.resolveAgent(opts?.systemPrompt, opts?.disabledTools, opts?.vercelAiSdk)
 
     const channel = createChannel<ProviderEvent>()
     const media: MediaAttachment[] = []
 
     const resultPromise = agent.generate({
-      messages: input.messages as ModelMessage[],
+      messages: messages as ModelMessage[],
       onStepFinish: (step) => {
         for (const tc of step.toolCalls) {
           channel.push({ type: 'tool_use', id: tc.toolCallId, name: tc.toolName, input: tc.input })

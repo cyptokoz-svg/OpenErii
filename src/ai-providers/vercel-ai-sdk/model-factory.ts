@@ -1,7 +1,7 @@
 /**
  * Model factory — creates Vercel AI SDK LanguageModel instances from config.
  *
- * Reads ai-provider.json from disk on each call so that model
+ * Reads ai-provider-manager.json from disk on each call so that model
  * changes take effect without a restart.  Uses dynamic imports so unused
  * provider packages don't prevent startup.
  */

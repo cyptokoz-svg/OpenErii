@@ -10,9 +10,12 @@ import {
   buildSummarizationPrompt,
   createCompactBoundary,
   createSummaryEntry,
+  compactIfNeeded,
+  forceCompact,
   DEFAULT_COMPACTION_CONFIG,
   type CompactionConfig,
 } from './compaction.js'
+import { MemorySessionStore } from './session.js'
 import type { SessionEntry, ContentBlock } from './session.js'
 
 // ==================== Helpers ====================
@@ -357,5 +360,110 @@ describe('createSummaryEntry', () => {
     expect(entry.provider).toBe('compaction')
     expect(entry.sessionId).toBe('sess1')
     expect(entry.parentUuid).toBe('parent-uuid')
+  })
+})
+
+// ==================== compactIfNeeded ====================
+
+// A small config so tests don't need giant strings for most cases
+const SMALL_CONFIG: CompactionConfig = {
+  maxContextTokens: 1000,
+  maxOutputTokens: 100,
+  autoCompactBuffer: 100,
+  microcompactKeepRecent: 1,
+}
+// threshold = 1000 - 100 - 100 = 800 tokens ≈ 2800 chars
+
+describe('compactIfNeeded', () => {
+  it('returns { compacted: false } when session is below threshold', async () => {
+    const session = new MemorySessionStore('test-s1')
+    await session.appendUser('short message')
+    const summarize = vi.fn()
+    const result = await compactIfNeeded(session, SMALL_CONFIG, summarize)
+    expect(result).toEqual({ compacted: false, method: 'none' })
+    expect(summarize).not.toHaveBeenCalled()
+  })
+
+  it('returns microcompact result when large old tool result saves enough tokens', async () => {
+    const session = new MemorySessionStore('test-s2')
+    // Two tool result entries — microcompactKeepRecent=1 truncates the old one
+    const hugeContent = 'x'.repeat(72_000) // ~20571 tokens, well above MIN_MICROCOMPACT_SAVINGS=20000
+    await session.appendUser([{ type: 'tool_result', tool_use_id: 't0', content: hugeContent }])
+    await session.appendUser([{ type: 'tool_result', tool_use_id: 't1', content: 'small result' }])
+    await session.appendUser('follow-up')
+    const summarize = vi.fn()
+    const tinyConfig: CompactionConfig = {
+      maxContextTokens: 100,
+      maxOutputTokens: 5,
+      autoCompactBuffer: 5,
+      microcompactKeepRecent: 1,
+    }
+    // threshold = 90 tokens; session is ~20573 tokens >> threshold; after microcompact ~4 tokens << threshold
+    const result = await compactIfNeeded(session, tinyConfig, summarize)
+    expect(result.compacted).toBe(true)
+    expect(result.method).toBe('microcompact')
+    expect(result.activeEntries).toBeDefined()
+    expect(summarize).not.toHaveBeenCalled()
+  })
+
+  it('calls summarize and writes boundary+summary when microcompact is insufficient', async () => {
+    const session = new MemorySessionStore('test-s3')
+    // Fill with large user text that microcompact cannot truncate (no tool results)
+    const largeText = 'w'.repeat(3000) // ~857 tokens > threshold of 800
+    await session.appendUser(largeText)
+    const summarize = vi.fn().mockResolvedValue('Here is the summary.')
+    const result = await compactIfNeeded(session, SMALL_CONFIG, summarize)
+    expect(result).toEqual({ compacted: true, method: 'full' })
+    expect(summarize).toHaveBeenCalledOnce()
+    // Boundary + summary should have been appended
+    const all = await session.readAll()
+    const boundary = all.find((e) => e.subtype === 'compact_boundary')
+    const summary = all.find((e) => e.isCompactSummary === true)
+    expect(boundary).toBeDefined()
+    expect(summary).toBeDefined()
+    expect(summary?.message.content).toContain('Here is the summary.')
+  })
+
+  it('propagates error when summarize throws', async () => {
+    const session = new MemorySessionStore('test-s4')
+    const largeText = 'e'.repeat(3000)
+    await session.appendUser(largeText)
+    const summarize = vi.fn().mockRejectedValue(new Error('LLM unavailable'))
+    await expect(compactIfNeeded(session, SMALL_CONFIG, summarize)).rejects.toThrow('LLM unavailable')
+  })
+})
+
+// ==================== forceCompact ====================
+
+describe('forceCompact', () => {
+  it('returns null for an empty session', async () => {
+    const session = new MemorySessionStore('test-fc1')
+    const summarize = vi.fn()
+    const result = await forceCompact(session, summarize)
+    expect(result).toBeNull()
+    expect(summarize).not.toHaveBeenCalled()
+  })
+
+  it('compresses non-empty session and writes boundary+summary', async () => {
+    const session = new MemorySessionStore('test-fc2')
+    await session.appendUser('first message')
+    await session.appendAssistant('assistant reply')
+    const summarize = vi.fn().mockResolvedValue('Compact summary text.')
+    const result = await forceCompact(session, summarize)
+    expect(result).not.toBeNull()
+    expect(result!.preTokens).toBeGreaterThan(0)
+    expect(summarize).toHaveBeenCalledOnce()
+    const all = await session.readAll()
+    const boundary = all.find((e) => e.subtype === 'compact_boundary')
+    const summary = all.find((e) => e.isCompactSummary === true)
+    expect(boundary?.compactMetadata?.trigger).toBe('manual')
+    expect(summary?.message.content).toContain('Compact summary text.')
+  })
+
+  it('propagates error when summarize throws', async () => {
+    const session = new MemorySessionStore('test-fc3')
+    await session.appendUser('a message')
+    const summarize = vi.fn().mockRejectedValue(new Error('timeout'))
+    await expect(forceCompact(session, summarize)).rejects.toThrow('timeout')
   })
 })

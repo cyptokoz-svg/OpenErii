@@ -284,6 +284,7 @@ export class DataBridge {
       for (const sym of symbols) {
         try {
           const rows = await fn.call(client, { ...mergedParams, symbol: sym })
+          if (!Array.isArray(rows)) continue
           for (const row of rows) {
             allRows.push({ _symbol: sym, ...row })
           }

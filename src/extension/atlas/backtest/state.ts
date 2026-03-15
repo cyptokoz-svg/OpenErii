@@ -57,7 +57,11 @@ export async function loadDayResults(departmentId: string, runId: string): Promi
     const raw = await readFile(daysFile(departmentId, runId), 'utf-8')
     return raw.trim().split('\n')
       .filter(Boolean)
-      .map((line) => JSON.parse(line) as DayResult)
+      .map((line) => {
+        try { return JSON.parse(line) as DayResult }
+        catch { console.warn('backtest: corrupted day result line, skipping'); return null }
+      })
+      .filter((x): x is DayResult => x !== null)
   } catch {
     return []
   }

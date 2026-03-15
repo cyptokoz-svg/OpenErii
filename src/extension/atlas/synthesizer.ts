@@ -27,7 +27,7 @@ function accumulate(envelopes: Envelope[]): VoteAccumulator {
   }
 
   for (const env of envelopes) {
-    const w = env.weight
+    const w = Number(env.weight) || 0
     acc.total_weight += w
 
     switch (env.signal.direction) {

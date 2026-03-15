@@ -70,6 +70,7 @@ export class WalkForwardEngine {
 
     // Calculate trading days
     const allDays = this.tradingDays(config.startDate, config.endDate)
+    if (!config.step || config.step <= 0) throw new Error('step must be > 0')
     const stepDays = allDays.filter((_, i) => i % config.step === 0)
     if (stepDays.length === 0) throw new Error('No trading days in date range')
 
@@ -265,9 +266,9 @@ export class WalkForwardEngine {
         // Track weights
         weightHistory.push({ date, weights: { ...weights } })
 
-        // Try evolution every 10 simulation days
+        // Try evolution every simulation day (same as live)
         if (autoResearch) autoResearch.setReferenceDate(date)
-        if (autoResearch && i > 0 && i % 10 === 0) {
+        if (autoResearch && i > 0) {
           try {
             const evoResult = await autoResearch.runOnce()
             if (evoResult.action === 'started' || evoResult.action === 'evaluated') {

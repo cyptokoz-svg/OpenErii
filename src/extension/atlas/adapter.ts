@@ -154,8 +154,11 @@ export function createAtlasTools(deps: AtlasToolsDeps) {
         endDate: z.string().describe('End date YYYY-MM-DD, e.g. "2026-03-14"'),
         step: z.number().int().min(1).max(30).optional().describe('Run every N trading days (default: 5)'),
         disable_evolution: z.boolean().optional().describe('Disable agent evolution (default: false)'),
+        gdelt_keywords: z.string().optional().describe('GDELT query keywords for historical news'),
+        bigquery_project: z.string().optional().describe('Google Cloud project ID for BigQuery GDELT access'),
+        seedRunId: z.string().optional().describe('Seed from a previous run — inherit evolved weights and prompts'),
       }),
-      execute: async ({ department, startDate, endDate, step, disable_evolution }) => {
+      execute: async ({ department, startDate, endDate, step, disable_evolution, gdelt_keywords, bigquery_project, seedRunId }) => {
         const btDeps = deps.getBacktestDeps?.()
         if (!btDeps) return { error: 'Backtest dependencies not available' }
 
@@ -170,6 +173,9 @@ export function createAtlasTools(deps: AtlasToolsDeps) {
             step: step ?? 5,
             disable_evolution: disable_evolution ?? false,
             initialCapital: 100000,
+            gdelt_keywords,
+            bigquery_project,
+            seedRunId,
           })
 
           return {

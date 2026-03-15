@@ -174,11 +174,15 @@ export class FreshnessTracker {
       const prevPricesStr = this.state[stateKey]
 
       if (prevPricesStr && currentPrices) {
-        const prevPrices = JSON.parse(prevPricesStr) as Record<string, number>
-        const maxChange = computeMaxPriceChange(prevPrices, currentPrices)
-        if (maxChange < PRICE_CHANGE_THRESHOLD) {
-          console.log(`atlas: ${agentName} — prices moved only ${(maxChange * 100).toFixed(2)}% → using cached envelope`)
-          return false
+        try {
+          const prevPrices = JSON.parse(prevPricesStr) as Record<string, number>
+          const maxChange = computeMaxPriceChange(prevPrices, currentPrices)
+          if (maxChange < PRICE_CHANGE_THRESHOLD) {
+            console.log(`atlas: ${agentName} — prices moved only ${(maxChange * 100).toFixed(2)}% → using cached envelope`)
+            return false
+          }
+        } catch {
+          // Corrupted cache — treat as data changed, re-run agent
         }
       }
 

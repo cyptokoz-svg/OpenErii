@@ -123,8 +123,8 @@ export class HistoricalDataBridge {
     const signalIdx = bars.findIndex((b) => b.date >= date)
     if (signalIdx < 0) return null
 
-    const futureIdx = Math.min(signalIdx + days, bars.length - 1)
-    if (futureIdx <= signalIdx) return null
+    const futureIdx = signalIdx + days
+    if (futureIdx >= bars.length) return null
 
     // Prevent look-ahead bias: exit bar must not exceed simulatedDate
     if (this.simulatedDate && bars[futureIdx].date > this.simulatedDate) return null

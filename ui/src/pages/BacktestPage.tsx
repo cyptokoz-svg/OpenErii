@@ -570,7 +570,7 @@ export function BacktestPage() {
         try {
           const r = await atlasApi.backtestResult(dept, runId)
           setResult(r)
-        } catch { /* partial result may not be ready */ }
+        } catch (e) { console.warn('backtest: partial result not ready:', e) }
         setIsRunning(false)
         setStopNotice(null)
         loadRuns()

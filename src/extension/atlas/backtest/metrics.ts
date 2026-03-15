@@ -141,7 +141,7 @@ export function computeAgentAttribution(
     })
 
     const wins = returns.filter((r) => r > 0).length
-    const totalPnl = returns.reduce((a, b) => a + b, 0) * 100
+    const totalPnl = returns.reduce((a, b) => a + b, 0)
     const avgConviction = agentSignals.reduce((a, s) => a + s.conviction, 0) / agentSignals.length
 
     // Weight start/end
@@ -152,7 +152,7 @@ export function computeAgentAttribution(
       agent,
       signals: agentSignals.length,
       win_rate_pct: scored.length > 0 ? Math.round((wins / scored.length) * 100) : 0,
-      total_pnl_pct: Math.round(totalPnl * 100) / 100,
+      total_pnl_pct: Math.round(totalPnl * 10000) / 100,
       avg_conviction: Math.round(avgConviction),
       sharpe: computeSharpe(returns),
       weight_start: firstWeights[agent] ?? 1.0,

@@ -18,6 +18,10 @@ import { createTradingConfigRoutes } from './routes/trading-config.js'
 import { createDevRoutes } from './routes/dev.js'
 import { createToolsRoutes } from './routes/tools.js'
 import { createAtlasRoutes } from './routes/atlas.js'
+import { CotClient } from '../../openbb/cot/client.js'
+import { VolatilityClient } from '../../openbb/volatility/client.js'
+import { WeatherClient } from '../../openbb/weather/client.js'
+import type { SDKDerivativesClient } from '../../openbb/sdk/derivatives-client.js'
 import { loadAtlasConfig } from '../../extension/atlas/config.js'
 import { AtlasPipeline } from '../../extension/atlas/pipeline.js'
 import { ensureAtlasChannels, deptChannelId } from '../../extension/atlas/channels.js'
@@ -91,6 +95,128 @@ export class WebPlugin implements Plugin {
     })
 
     app.use('/api/*', cors())
+
+    // ==================== Auth ====================
+    const webPassword = process.env.WEB_PASSWORD
+    if (webPassword) {
+      const AUTH_COOKIE = 'erii_auth'
+      const loginPage = (error = false) => `<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenErii</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0a0a0f;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+    .card {
+      background: #13131a;
+      border: 1px solid #2a2a3a;
+      border-radius: 16px;
+      padding: 40px;
+      width: 100%;
+      max-width: 380px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    }
+    .logo {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    .logo h1 {
+      font-size: 28px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: -0.5px;
+    }
+    .logo span { color: #6366f1; }
+    .logo p { color: #666; font-size: 13px; margin-top: 6px; }
+    input {
+      width: 100%;
+      padding: 12px 16px;
+      background: #1e1e2e;
+      border: 1px solid #2a2a3a;
+      border-radius: 10px;
+      color: #fff;
+      font-size: 15px;
+      margin-bottom: 12px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input:focus { border-color: #6366f1; }
+    input::placeholder { color: #444; }
+    button {
+      width: 100%;
+      padding: 13px;
+      background: #6366f1;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 4px;
+      transition: background 0.2s;
+    }
+    button:hover { background: #5254cc; }
+    .error {
+      background: rgba(239,68,68,0.1);
+      border: 1px solid rgba(239,68,68,0.3);
+      color: #f87171;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      margin-bottom: 16px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">
+      <h1>Open<span>Erii</span></h1>
+      <p>AI Trading Research Platform</p>
+    </div>
+    ${error ? '<div class="error">密码错误，请重试</div>' : ''}
+    <form method="POST" action="/__auth/login">
+      <input type="password" name="password" placeholder="输入访问密码" autofocus autocomplete="current-password" />
+      <button type="submit">进入</button>
+    </form>
+  </div>
+</body>
+</html>`
+
+      // Login form
+      app.get('/__auth/login', (c) => c.html(loginPage()))
+
+      // Login submit
+      app.post('/__auth/login', async (c) => {
+        const body = await c.req.parseBody()
+        if (body.password === webPassword) {
+          const token = Buffer.from(`erii:${webPassword}`).toString('base64')
+          c.header('Set-Cookie', `${AUTH_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax`)
+          return c.redirect('/')
+        }
+        return c.html(loginPage(true))
+      })
+
+      // Auth guard — skip for login routes
+      app.use('/*', async (c, next) => {
+        const path = new URL(c.req.url).pathname
+        if (path.startsWith('/__auth')) return await next()
+        const cookie = c.req.header('Cookie') ?? ''
+        const token = Buffer.from(`erii:${webPassword}`).toString('base64')
+        const valid = cookie.split(';').some((p) => p.trim() === `${AUTH_COOKIE}=${token}`)
+        if (!valid) return c.redirect('/__auth/login')
+        await next()
+      })
+    }
 
     // ==================== Mount route modules ====================
     app.route('/api/chat', createChatRoutes({ ctx, sessions, sseByChannel: this.sseByChannel }))
@@ -206,7 +332,10 @@ export class WebPlugin implements Plugin {
         const factors = (envelope.reasoning?.key_factors ?? []).map((f: string) => `  • ${f}`).join('\n')
         const caveats = envelope.reasoning?.caveats ?? ''
         // Bug #6 fix: use p.ticker (not p.asset which doesn't exist on Position type)
-        const positions = (envelope.signal.positions ?? []).map((p: any) => `  📌 ${p.ticker}${p.name ? ` (${p.name})` : ''}: ${p.direction} ${p.size_pct}%`).join('\n')
+        const positions = (envelope.signal.positions ?? []).map((p: any) => {
+          const price = p.entry_price ? ` | 入场:${p.entry_price} 止损:${p.stop_loss ?? '-'} 目标:${(p.take_profit ?? []).join('/')}` : ''
+          return `  📌 ${p.ticker}${p.name ? ` (${p.name})` : ''}: ${p.direction} ${p.size_pct}%${price}`
+        }).join('\n')
 
         const text = [
           `${dirEmoji(dir)} **${agentName(agent)}** [${agent.layer}]`,
@@ -259,10 +388,13 @@ export class WebPlugin implements Plugin {
       },
       onReportComplete: (report) => {
         // Bug #6 fix: use p.ticker (not p.asset)
-        const positions = (report.positions ?? []).map((p: any) => `  📌 ${p.ticker}${p.name ? ` (${p.name})` : ''}: ${p.direction} ${p.size_pct}%`).join('\n')
+        const fmtPositions = (list: any[]) => list.map((p: any) => {
+          const price = p.entry_price ? ` | 入场:${p.entry_price} 止损:${p.stop_loss ?? '-'} 目标:${(p.take_profit ?? []).join('/')}` : ''
+          return `  📌 ${p.ticker}${p.name ? ` (${p.name})` : ''}: ${p.direction} ${p.size_pct}%${price}`
+        }).join('\n')
+        const positions = fmtPositions(report.positions ?? [])
         const text = [
           `🏁 ═══ 最终投资报告 ═══`,
-          // Bug #7 fix: conviction is 0-100
           `${dirEmoji(report.direction)} 方向: ${report.direction}  信心: ${report.conviction}/100`,
           '',
           report.summary,
@@ -277,7 +409,6 @@ export class WebPlugin implements Plugin {
         // Also push a concise conclusion to Alice's main channel
         const mainText = [
           `📋 投研团队报告 — ${report.department}`,
-          // Bug #7 fix: conviction is 0-100
           `${dirEmoji(report.direction)} 方向: ${report.direction}  信心: ${report.conviction}/100`,
           '',
           report.summary,
@@ -343,7 +474,7 @@ export class WebPlugin implements Plugin {
           const { model: languageModel } = await createModelFromConfig(
             model ? { provider: aiConfig.provider || 'anthropic', model, baseUrl: aiConfig.baseUrl } : undefined,
           )
-          const result = await generateText({ model: languageModel, prompt, abortSignal })
+          const result = await generateText({ model: languageModel, prompt, abortSignal, maxTokens: 16000 })
           return result.text
         } catch (err) {
           console.warn(`atlas: direct API call failed (model=${model}), falling back to Claude Code CLI:`, err)
@@ -367,8 +498,9 @@ export class WebPlugin implements Plugin {
     const equityClient = ctx.extensions?.equityClient as EquityClientLike | undefined
 
     // Interval → OpenBB interval mapping
+    // yfinance does not support '4h' — map to '1h' and use 15-day lookback to cover enough bars
     const intervalMap: Record<string, string> = {
-      '15m': '15m', '1h': '1h', '4h': '4h', '1d': '1d', '1w': '1w', '1M': '1M',
+      '15m': '15m', '1h': '1h', '4h': '1h', '1d': '1d', '1w': '1W', '1M': '1M',
     }
 
     // Build generic SDK clients map for DataBridge passthrough
@@ -378,16 +510,26 @@ export class WebPlugin implements Plugin {
     if (ctx.extensions?.currencyClient) sdkClients.currency = ctx.extensions.currencyClient as GenericClient
     if (ctx.extensions?.economyClient) sdkClients.economy = ctx.extensions.economyClient as GenericClient
     if (ctx.extensions?.commodityClient) sdkClients.commodity = ctx.extensions.commodityClient as GenericClient
+    if (ctx.extensions?.derivativesClient) sdkClients.derivatives = ctx.extensions.derivativesClient as unknown as GenericClient
+    sdkClients.cot = new CotClient() as unknown as GenericClient
+    sdkClients.volatility = new VolatilityClient() as unknown as GenericClient
+    sdkClients.weather = new WeatherClient() as unknown as GenericClient
 
     const dataBridgeDeps: DataBridgeDeps = {
-      fetchPrice: async (symbol: string, interval: string): Promise<PriceBar[]> => {
+      fetchPrice: async (symbol: string, interval: string, startDateOverride?: string): Promise<PriceBar[]> => {
         if (!equityClient) return []
         try {
           const obbInterval = intervalMap[interval] ?? '1d'
-          // Build start_date: go back enough bars for 20-bar lookback
-          const daysBack = obbInterval === '1d' ? 30 : obbInterval === '4h' ? 10 : 5
-          const startDate = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000)
-            .toISOString().slice(0, 10)
+          // Use override for backtest (full date range), otherwise lookback window.
+          // '4h' maps to '1h' (yfinance limitation), so we use 15 days to ensure enough bars.
+          let startDate: string
+          if (startDateOverride) {
+            startDate = startDateOverride
+          } else {
+            const daysBack = interval === '1d' ? 30 : interval === '4h' ? 15 : 5
+            startDate = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000)
+              .toISOString().slice(0, 10)
+          }
           const rows = await equityClient.getHistorical({
             symbol,
             start_date: startDate,

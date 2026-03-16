@@ -24,7 +24,7 @@ import type { BrainExportState } from './extension/brain/index.js'
 import { createBrowserTools } from './extension/browser/index.js'
 import { SymbolIndex } from './openbb/equity/index.js'
 import { createEquityTools } from './extension/equity/index.js'
-import { getSDKExecutor, buildRouteMap, SDKEquityClient, SDKCryptoClient, SDKCurrencyClient, SDKNewsClient, SDKEconomyClient, SDKCommodityClient } from './openbb/sdk/index.js'
+import { getSDKExecutor, buildRouteMap, SDKEquityClient, SDKCryptoClient, SDKCurrencyClient, SDKNewsClient, SDKEconomyClient, SDKCommodityClient, SDKDerivativesClient } from './openbb/sdk/index.js'
 import type { EquityClientLike, CryptoClientLike, CurrencyClientLike, NewsClientLike } from './openbb/sdk/types.js'
 import { buildSDKCredentials } from './openbb/credential-map.js'
 import { OpenBBEquityClient } from './openbb/equity/client.js'
@@ -232,6 +232,7 @@ async function main() {
   let newsClient: NewsClientLike
   let economyClient: SDKEconomyClient | undefined
   let commodityClient: SDKCommodityClient | undefined
+  let derivativesClient: SDKDerivativesClient | undefined
 
   if (config.openbb.dataBackend === 'openbb') {
     const url = config.openbb.apiUrl
@@ -251,6 +252,7 @@ async function main() {
     newsClient = new SDKNewsClient(executor, 'news', undefined, credentials, routeMap)
     economyClient = new SDKEconomyClient(executor, 'economy', undefined, credentials, routeMap)
     commodityClient = new SDKCommodityClient(executor, 'commodity', undefined, credentials, routeMap)
+    derivativesClient = new SDKDerivativesClient(executor, 'derivatives', 'yfinance', credentials, routeMap)
   }
 
   // OpenBB API server is started later via optionalPlugins
@@ -536,7 +538,7 @@ async function main() {
     getAccountGit: (id: string): ITradingGit | undefined => accountSetups.get(id)?.git,
     reconnectAccount,
     reconnectConnectors,
-    extensions: { newsStore, equityClient, cryptoClient, currencyClient, newsClient, economyClient, commodityClient },
+    extensions: { newsStore, equityClient, cryptoClient, currencyClient, newsClient, economyClient, commodityClient, derivativesClient },
   }
 
   for (const plugin of [...corePlugins, ...optionalPlugins.values()]) {

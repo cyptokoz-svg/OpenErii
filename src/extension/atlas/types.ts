@@ -32,6 +32,7 @@ export interface Signal {
   conviction: number
   targets: string[]
   positions: Position[]
+  timeframe?: SignalTimeframe
 }
 
 // ==================== Reasoning ====================
@@ -69,8 +70,13 @@ export interface Envelope {
 // ==================== Agent Config ====================
 
 export type DataSourceType =
-  | 'price' | 'news' | 'macro'                          // legacy
+  | 'price' | 'current_price' | 'news' | 'macro'        // price variants + legacy
   | 'equity' | 'economy' | 'crypto' | 'commodity' | 'currency'  // generic SDK clients
+  | 'cot'                                                // CFTC Commitments of Traders
+  | 'derivatives'                                        // Futures curve, options
+  | 'correlation'                                        // Cross-asset correlation matrix
+  | 'volatility'                                         // Options-implied vol, VIX term structure
+  | 'weather'                                            // Agricultural and energy weather data
 
 export interface DataSourceConfig {
   provider: string
@@ -164,6 +170,8 @@ export interface AtlasReport {
     worst_agent: string
   }
   skipped_agents: string[]
+  /** L4 agent names that failed to produce output. Non-empty = decision layer degraded. */
+  missing_decision_makers?: string[]
   cost_estimate: {
     total_calls: number
     skipped_calls: number
@@ -172,6 +180,8 @@ export interface AtlasReport {
 
 // ==================== Scorecard ====================
 
+export type SignalTimeframe = '短线' | '中线' | '中期' | '长期'
+
 export interface SignalRecord {
   agent: string
   department: string
@@ -179,6 +189,12 @@ export interface SignalRecord {
   conviction: number
   targets: string[]
   date: string
+  /** Signal holding period declared by the agent */
+  timeframe?: SignalTimeframe
+  /** Position-level price data, sourced from envelope positions[0] */
+  entry_price?: number | null
+  stop_loss?: number | null
+  take_profit?: number[]
   forward_return?: number
   forward_days?: number
   scored?: boolean
